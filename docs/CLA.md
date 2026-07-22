@@ -1,9 +1,9 @@
-# Loobric Core Individual Contributor License Agreement
+# Loobric Server Individual Contributor License Agreement
 
-Thank you for contributing to Loobric Core ("the Project"), maintained by
+Thank you for contributing to Loobric Server ("the Project"), maintained by
 Brad Collette / Loobric ("the Maintainer").
 
-This agreement exists for one reason, stated plainly: Loobric Core is licensed
+This agreement exists for one reason, stated plainly: Loobric Server is licensed
 AGPL-3.0 to the public, and the Project is sustained by also licensing it
 commercially (for example, to power a hosted service). For that model to be
 possible, the Maintainer needs the right to license *your* contribution under

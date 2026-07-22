@@ -1,6 +1,6 @@
 # Authentication
 
-Loobric Core protects your tool data while staying easy to integrate with machines
+Loobric Server protects your tool data while staying easy to integrate with machines
 and applications. Every API endpoint requires authentication (unless auth is
 explicitly disabled — see below), and all data is isolated per user account.
 
@@ -20,7 +20,7 @@ explicitly disabled — see below), and all data is isolated per user account.
 
 ### Creating an API key
 
-1. Log in to the Loobric Core web UI
+1. Log in to the Loobric Server web UI
 2. Open **Settings → API Keys**
 3. Click **Create New Key** and set:
    - **Name** — a label (e.g. "Mill #3", "Backup Script")
@@ -131,7 +131,7 @@ export AUTH_ENABLED=false
 With auth disabled, all endpoints act as a built-in test user and become publicly
 accessible — only use this in a trusted environment.
 
-Loobric Core also supports a **solo mode** that runs as a single built-in user
+Loobric Server also supports a **solo mode** that runs as a single built-in user
 without login ceremony, intended for local single-operator setups.
 
 ## Multi-Tenancy

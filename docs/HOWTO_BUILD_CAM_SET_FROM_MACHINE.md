@@ -17,7 +17,7 @@ way.)
 
 ## Before you start
 
-- A running Loobric Core server and a logged-in `loobric`. See
+- A running Loobric Server server and a logged-in `loobric`. See
   [QUICK_START.md](QUICK_START.md) and [CLI.md](https://github.com/loobric/loobric-cli/blob/master/docs/CLI.md).
 - A control client configured against this server and pointed at your machine.
 - A CAM client configured against the same server.

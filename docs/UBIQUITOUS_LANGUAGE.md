@@ -98,7 +98,7 @@ They return only through this document with founder sign-off:
 
 ## Server Surfaces
 
-One Loobric Core server exposes three distinct surfaces. Don't say "the facade" when you mean
+One Loobric Server server exposes three distinct surfaces. Don't say "the facade" when you mean
 one of these — name the surface.
 
 | Term | Definition |
@@ -129,8 +129,8 @@ messages. They never appear in user-facing prose, client UI, or the published AP
 |------|------------|
 | **Loobric** | The company/organization and brand (loobric.com, GitHub org). Not the product name. |
 | **Loobric** | The product: an open-core tool data synchronization system. |
-| **Loobric Core** | The central REST API + database server (`loobric-server`). The thing clients talk to. Licensed AGPL-3.0 (relicensed from Elastic 2.0 on 2026-06-09, decision G6). |
-| **Client** | Any program that synchronizes tool data with a Loobric Core server: `loobric-freecad`, `loobric-linuxcnc`, the `loobric.py` CLI, or third-party integrations. Clients are MIT-licensed reference implementations. |
+| **Loobric Server** | The central REST API + database server (`loobric-server`). The thing clients talk to. Licensed AGPL-3.0 (relicensed from Elastic 2.0 on 2026-06-09, decision G6). |
+| **Client** | Any program that synchronizes tool data with a Loobric Server server: `loobric-freecad`, `loobric-linuxcnc`, the `loobric.py` CLI, or third-party integrations. Clients are MIT-licensed reference implementations. |
 | **Loobric Web** | The hosted web application. The v1 app (`loobric-web`, app.loobric.com) is retired; a v2 rebuild on the Public API is scoped in M3. Part of the commercial offering, not the open core. ⚠️ Boundary with the core **Web UI** (`/ui`, see Server Surfaces) is undecided: M3 scope (account/key management, audit browsing, backup/restore, admin) is currently slated for the core Web UI — decide which features are open `/ui` vs commercial Loobric Web before M3 starts. |
 
 ## Domain Concepts — Tools
@@ -170,7 +170,7 @@ distinct entities along the catalog → physical → machine axis. Always use th
 
 | Term | Definition |
 |------|------------|
-| **Sync / Synchronization** | The core verb: making tool data consistent between Loobric Core and a client system (a CAM application's tool data, a controller's tool table, etc.). |
+| **Sync / Synchronization** | The core verb: making tool data consistent between Loobric Server and a client system (a CAM application's tool data, a controller's tool table, etc.). |
 | **Bidirectional sync** | Changes flow both ways: CAM → server → controller *and* controller → server → CAM (e.g. wear offsets entered at the machine propagate back). |
 | **Tool table** | A controller's native tool data store (e.g. a `.tbl` file with T/P/D/Z parameters). A client-side format, not a Loobric concept; Loobric models its rows as ToolTableEntries. |
 | **Tool number** | The ONLY tool identifier that travels in G-code (`T3 M6`): the single point of contact between CAM's assumption and the controller's reality. Both sides' number→tool mappings are recorded (CAM numbering with the ToolSet; the machine side via Binding on `(machine, tool_number)`), making their agreement a verifiable fact. Verifying this mapping is the system's most important job — see `CONCEPTS.md`. |
@@ -218,8 +218,8 @@ distinct entities along the catalog → physical → machine axis. Always use th
 
 | Term | Definition |
 |------|------------|
-| **Open core** | Business model: Loobric Core is free and self-hostable; revenue comes from hosting, the web UI, and team/enterprise features. |
-| **Self-hosted** | Running Loobric Core on your own infrastructure (free tier, full data control). |
+| **Open core** | Business model: Loobric Server is free and self-hostable; revenue comes from hosting, the web UI, and team/enterprise features. |
+| **Self-hosted** | Running Loobric Server on your own infrastructure (free tier, full data control). |
 | **Cloud-hosted** | Loobric-managed hosting (Hobbyist $15/mo, Professional $299/mo, Enterprise custom). |
 | **AGPL-3.0** | loobric-server's license (relicensed from Elastic 2.0 on 2026-06-09, decision G6): OSI-approved open source; network-use copyleft prevents proprietary SaaS forks while keeping self-hosting fully free. Commercial licensing covers the hosted/enterprise offering. Clients remain MIT. |
 

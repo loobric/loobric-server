@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """
-Setup configuration for Loobric Core.
+Setup configuration for Loobric Server.
 
 This makes the package pip-installable.
 """

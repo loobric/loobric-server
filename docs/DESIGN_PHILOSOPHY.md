@@ -1,7 +1,7 @@
 
 # Design Philosophy
 
-Loobric Core is built using AI tools and principles.  This document should be reviewed and incorporated by all AI agents working on Loobric.
+Loobric Server is built using AI tools and principles.  This document should be reviewed and incorporated by all AI agents working on Loobric.
 
 ## General AI Prompt
 

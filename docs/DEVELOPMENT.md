@@ -1,4 +1,4 @@
-# Loobric Core Development Guide
+# Loobric Server Development Guide
 
 ## Development Documentation
 1. **[Development Guide](DEVELOPMENT.md)** - This document 

@@ -1,4 +1,4 @@
-# Loobric Core
+# Loobric Server
 
 > Application-agnostic REST API and database for tool data synchronization across CAM systems, CNC machines, and tool rooms.
 
@@ -7,7 +7,7 @@
 
 ## Overview
 
-Loobric Core is the central REST API and database system that provides a unified interface for managing tool data across manufacturing systems. It's designed to bridge the gap between CAM software, CNC machines, and tool rooms with a focus on real-time synchronization and data integrity.
+Loobric Server is the central REST API and database system that provides a unified interface for managing tool data across manufacturing systems. It's designed to bridge the gap between CAM software, CNC machines, and tool rooms with a focus on real-time synchronization and data integrity.
 
 ### Key Features
 

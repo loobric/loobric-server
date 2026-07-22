@@ -29,13 +29,13 @@ jobs:
         with:
           # Signatures are stored in this repo on a dedicated branch.
           path-to-signatures: 'signatures/version1/cla.json'
-          path-to-document: 'https://github.com/loobric/smooth-core/blob/master/docs/CLA.md'
+          path-to-document: 'https://github.com/loobric/loobric-server/blob/master/docs/CLA.md'
           branch: 'cla-signatures'
 
           # Must match docs/CLA.md §6 exactly.
           custom-notsigned-prcomment: >-
-            Thank you for your contribution to Smooth Core. Before we can merge,
-            we need you to sign the [Contributor License Agreement](https://github.com/loobric/smooth-core/blob/master/docs/CLA.md).
+            Thank you for your contribution to Loobric Server. Before we can merge,
+            we need you to sign the [Contributor License Agreement](https://github.com/loobric/loobric-server/blob/master/docs/CLA.md).
             Please read it, then post a comment below with the exact text:
           custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
           custom-allsigned-prcomment: 'All contributors have signed the CLA. Thank you!'

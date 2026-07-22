@@ -1,4 +1,4 @@
-# Contributing to Loobric Core
+# Contributing to Loobric Server
 
 ## Development Documentation
 

@@ -6,7 +6,7 @@
 > (`pip install loobric-cli`, then run the `quickstart.sh` seed script against
 > `https://api.loobric.com`). The steps below are for running your own server.
 
-Loobric Core is brand new and not yet ready for production use.  If you're looking for a production ready solution, you will have to wait a bit.  If you're a curious developer or risk tolerant user, you can try it out by running it yourself.
+Loobric Server is brand new and not yet ready for production use.  If you're looking for a production ready solution, you will have to wait a bit.  If you're a curious developer or risk tolerant user, you can try it out by running it yourself.
 
 1. Clone the repository
 

@@ -1,8 +1,8 @@
-# Loobric Core Architecture
+# Loobric Server Architecture
 
 ## Overview
 
-Loobric Core is a REST API and database for tool data synchronization. This document
+Loobric Server is a REST API and database for tool data synchronization. This document
 describes the system as it exists in the code. Planned capabilities live in
 [ROADMAP.md](../ROADMAP.md), not here.
 

@@ -32,8 +32,8 @@ def test_bulk_create_tool_items(client, db_session):
     - Sets user_id from authenticated user
     - Sets created_by/updated_by from authenticated user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     # Create user and session
     user = create_user(db_session, "test@example.com", "Password123")
@@ -84,8 +84,8 @@ def test_single_create_uses_array(client, db_session):
     - Same endpoint handles single and bulk
     - Array with one element for single operation
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -132,8 +132,8 @@ def test_create_validates_required_fields(client, db_session):
     - Returns error for invalid items
     - Partial success: valid items created, invalid items return errors
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -176,9 +176,9 @@ def test_bulk_read_tool_items(client, db_session):
     - Filters by user_id automatically (multi-tenant)
     - Supports pagination
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -218,9 +218,9 @@ def test_read_filters_by_user(client, db_session):
     - Multi-tenant isolation
     - User A cannot see User B's items
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user1 = create_user(db_session, "user1@example.com", "Password123")
     user2 = create_user(db_session, "user2@example.com", "Password123")
@@ -264,9 +264,9 @@ def test_bulk_update_tool_items(client, db_session):
     - Checks version for conflicts (optimistic locking)
     - Returns success count and per-item results
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -334,9 +334,9 @@ def test_update_detects_version_conflict(client, db_session):
     - Returns error with conflict details
     - Partial success: other items still updated
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -385,9 +385,9 @@ def test_update_rejects_other_users_items(client, db_session):
     - Multi-tenant isolation enforced
     - Returns error for items not owned by user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user1 = create_user(db_session, "user1@example.com", "Password123")
     user2 = create_user(db_session, "user2@example.com", "Password123")
@@ -436,9 +436,9 @@ def test_bulk_delete_tool_items(client, db_session):
     - Returns success count
     - Soft delete or hard delete (TBD)
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -486,9 +486,9 @@ def test_delete_rejects_other_users_items(client, db_session):
     - Multi-tenant isolation enforced
     - Returns error for items not owned by user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user1 = create_user(db_session, "user1@example.com", "Password123")
     user2 = create_user(db_session, "user2@example.com", "Password123")
@@ -535,9 +535,9 @@ def test_query_with_filters(client, db_session):
     - Supports search in description
     - Returns filtered results
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -577,9 +577,9 @@ def test_pagination(client, db_session):
     - Supports limit and offset parameters
     - Returns total count
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -616,9 +616,9 @@ def test_pagination(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_item_success(client, db_session):
     """Test retrieving a single tool item by ID."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
 
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -648,9 +648,9 @@ def test_get_single_tool_item_success(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_item_not_found_other_user(client, db_session):
     """Test that accessing another user's tool item returns 404."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolItem
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolItem
 
     owner = create_user(db_session, "owner@example.com", "Password123")
     other = create_user(db_session, "other@example.com", "Password123")

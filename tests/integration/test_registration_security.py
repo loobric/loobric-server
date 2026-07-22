@@ -53,7 +53,7 @@ def test_first_user_becomes_admin(client, db_session):
     - First user gets role="admin"
     - This happens automatically without explicit request
     """
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     
     # Register first user
     response = client.post(
@@ -119,8 +119,8 @@ def test_non_admin_can_register_users(client, db_session):
     - A non-admin (authenticated) registration returns 201
     - The created account is a non-admin "user"
     """
-    from smooth.database.schema import User
-    from smooth.auth.password import hash_password
+    from loobric_server.database.schema import User
+    from loobric_server.auth.password import hash_password
 
     # Create first user (admin)
     client.post(
@@ -229,7 +229,7 @@ def test_subsequent_users_are_not_admin(client, db_session):
     - Only first user becomes admin automatically
     - Users registered by admin have is_admin=False by default
     """
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     
     # Register first user (becomes admin)
     client.post(

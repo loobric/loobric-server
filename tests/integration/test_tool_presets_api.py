@@ -29,9 +29,9 @@ def test_bulk_create_tool_presets(client, db_session):
     - machine_id, tool_number, instance_id required
     - offsets, orientation stored as JSON
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -101,9 +101,9 @@ def test_create_validates_required_fields(client, db_session):
     Assumptions:
     - machine_id, tool_number, instance_id required
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -160,9 +160,9 @@ def test_create_validates_required_fields(client, db_session):
 @pytest.mark.integration
 def test_bulk_read_tool_presets(client, db_session):
     """Test bulk read/list of tool presets."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -216,9 +216,9 @@ def test_bulk_read_tool_presets(client, db_session):
 @pytest.mark.integration
 def test_filter_by_machine(client, db_session):
     """Test filtering presets by machine_id."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -274,9 +274,9 @@ def test_filter_by_machine(client, db_session):
 @pytest.mark.integration
 def test_bulk_update_tool_presets(client, db_session):
     """Test bulk update with version checking."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -356,9 +356,9 @@ def test_bulk_update_tool_presets(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_preset_success(client, db_session):
     """Test retrieving a single tool preset by ID."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
 
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -409,9 +409,9 @@ def test_get_single_tool_preset_success(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_preset_not_found_other_user(client, db_session):
     """Test retrieving another user's tool preset returns 404."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
 
     owner = create_user(db_session, "owner@example.com", "Password123")
     other = create_user(db_session, "other@example.com", "Password123")
@@ -460,9 +460,9 @@ def test_get_single_tool_preset_not_found_other_user(client, db_session):
 @pytest.mark.integration
 def test_bulk_delete_tool_presets(client, db_session):
     """Test bulk delete of presets."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

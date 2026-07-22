@@ -1,4 +1,4 @@
-# Smooth Concepts — how the pieces fit
+# Loobric Concepts — how the pieces fit
 
 A first-time user's guide to the domain model: what the four nouns mean, why the
 Machine is treated specially, why there is exactly one tool table per machine, and
@@ -9,7 +9,7 @@ Vocabulary is normative in `UBIQUITOUS_LANGUAGE.md`; this document explains the
 
 ---
 
-## The problem Smooth exists to solve
+## The problem Loobric exists to solve
 
 Tool data lives in three places that don't talk to each other:
 
@@ -19,7 +19,7 @@ Tool data lives in three places that don't talk to each other:
 3. **Your head** knows which rows in (2) are which tools in (1).
 
 Today, (3) never gets written down, so the offsets in (2) are stranded: re-measure
-the tool, re-enter the offset, repeat forever. Smooth's whole purpose is the loop:
+the tool, re-enter the offset, repeat forever. Loobric's whole purpose is the loop:
 
 > touch off at the machine → offset flows to the server → CAM sees the real,
 > current offset for *that tool on that machine* → edits flow back down.
@@ -53,7 +53,7 @@ the wrong offsets. That is a scrapped part on a good day.
 **Verifying that this mapping is consistent is the single most important job of
 the system.** The wear-offset loop everyone notices is built on top of it: an
 offset is only worth syncing because the number it hangs on means the same thing
-on both ends. Smooth's contribution is to make both halves of the assumption
+on both ends. Loobric's contribution is to make both halves of the assumption
 *explicit, recorded, and comparable through a shared ToolInstanceRecord*:
 
 ```
@@ -180,7 +180,7 @@ stored*.
 ### Identity-carrying clients (e.g. the CAM side)
 
 A `.fctb` file is JSON; the client can write the server id directly into the file
-(the additive `smooth` key) at export time. Identity is *embedded in the
+(the additive `loobric_server` key) at export time. Identity is *embedded in the
 representation*, so correspondence is deterministic — no human confirmation
 needed, because the client that created the record is the same client reading the
 file. When an editor strips the key, recovery is still deterministic (stored
@@ -251,7 +251,7 @@ Three reasons, and the first is decisive:
    assumption*, currently anonymous. Nothing prompts, nothing guesses. **At this
    moment the system knows the machine has *a* T3 but cannot yet vouch that it's
    *your* T3.** Posting `T3 M6` against this machine is still an act of faith,
-   exactly as it was before Smooth existed.
+   exactly as it was before Loobric existed.
 3. The server notices T3's diameter matches the downcut's and **proposes** a
    binding → Inbox. A proposal is a question, never an answer: confirming it is
    you, the human who can see the carousel, asserting "yes — what millstone
@@ -286,7 +286,7 @@ pretty sure T3 is the downcut" into a recorded, sticky, cross-checkable fact.
 
 **What guarantees that `T3` in my G-code is the tool actually in the machine?**
 Nothing *guarantees* it — a human still has to put the right tool in the right
-pocket. What Smooth does is make the assumption on each side explicit and
+pocket. What Loobric does is make the assumption on each side explicit and
 comparable: CAM's numbering is recorded with the ToolSet, the machine's reality
 is the synced tool table, and the confirmed Binding asserts they refer to the
 same ToolInstanceRecord. Agreement is then a checkable fact instead of tribal knowledge,

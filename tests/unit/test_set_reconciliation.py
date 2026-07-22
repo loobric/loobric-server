@@ -12,13 +12,13 @@ machine_id is returned verbatim with no derived state.
 """
 import pytest
 
-from smooth.binding_v2 import (
+from loobric_server.binding_v2 import (
     reconcile_set_membership, LOADED, REQUESTED, PENDING_BIND,
 )
-from smooth.database.schema import (
+from loobric_server.database.schema import (
     ToolSetRecord, ToolTableEntryRecord, EntryProposal,
 )
-from smooth.contract import Provenance, UNKNOWN
+from loobric_server.contract import Provenance, UNKNOWN
 
 UID = "user-recon"
 MACHINE = "m-recon"

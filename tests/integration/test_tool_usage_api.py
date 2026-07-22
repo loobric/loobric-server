@@ -29,9 +29,9 @@ def test_bulk_create_tool_usage(client, db_session):
     - preset_id and start_time required
     - wear_progression and events stored as JSON arrays
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -113,9 +113,9 @@ def test_create_validates_required_fields(client, db_session):
     Assumptions:
     - preset_id and start_time required
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -182,9 +182,9 @@ def test_create_validates_required_fields(client, db_session):
 @pytest.mark.integration
 def test_bulk_read_tool_usage(client, db_session):
     """Test bulk read/list of tool usage records."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -249,9 +249,9 @@ def test_bulk_read_tool_usage(client, db_session):
 @pytest.mark.integration
 def test_bulk_update_tool_usage(client, db_session):
     """Test bulk update with version checking."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -344,9 +344,9 @@ def test_bulk_update_tool_usage(client, db_session):
 @pytest.mark.integration
 def test_bulk_delete_tool_usage(client, db_session):
     """Test bulk delete of usage records."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset, ToolUsage
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

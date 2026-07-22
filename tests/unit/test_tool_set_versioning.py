@@ -26,8 +26,8 @@ def test_snapshot_tool_set(db_session):
     - Version number recorded
     - Immutable once created
     """
-    from smooth.database.schema import ToolSet, ToolSetHistory
-    from smooth.versioning import snapshot_tool_set
+    from loobric_server.database.schema import ToolSet, ToolSetHistory
+    from loobric_server.versioning import snapshot_tool_set
     
     # Create a tool set
     tool_set = ToolSet(
@@ -64,8 +64,8 @@ def test_get_tool_set_history(db_session):
     - Ordered by version desc
     - User-scoped access
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import snapshot_tool_set, get_tool_set_history
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import snapshot_tool_set, get_tool_set_history
     
     # Create tool set
     tool_set = ToolSet(
@@ -106,8 +106,8 @@ def test_get_history_access_control(db_session):
     - User-scoped access
     - Empty list for unauthorized access
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import get_tool_set_history
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import get_tool_set_history
     
     tool_set = ToolSet(
         name="Test Set",
@@ -136,8 +136,8 @@ def test_restore_tool_set(db_session):
     - Creates new version (increments)
     - Snapshots before and after restore
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import snapshot_tool_set, restore_tool_set, get_tool_set_history
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import snapshot_tool_set, restore_tool_set, get_tool_set_history
     
     # Create tool set
     tool_set = ToolSet(
@@ -184,8 +184,8 @@ def test_restore_nonexistent_version(db_session):
     - Returns None if version not found
     - No changes made
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import restore_tool_set
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import restore_tool_set
     
     tool_set = ToolSet(
         name="Test Set",
@@ -219,8 +219,8 @@ def test_compare_versions(db_session):
     - Only changed fields included
     - Returns None if versions not found
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import snapshot_tool_set, compare_versions
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import snapshot_tool_set, compare_versions
     
     # Create tool set
     tool_set = ToolSet(
@@ -268,8 +268,8 @@ def test_compare_identical_versions(db_session):
     - Empty differences dict if no changes
     - total_changes is 0
     """
-    from smooth.database.schema import ToolSet
-    from smooth.versioning import snapshot_tool_set, compare_versions
+    from loobric_server.database.schema import ToolSet
+    from loobric_server.versioning import snapshot_tool_set, compare_versions
     
     tool_set = ToolSet(
         name="Test Set",

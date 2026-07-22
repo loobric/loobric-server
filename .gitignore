@@ -35,8 +35,8 @@ htmlcov/
 # Local data: SQLite databases and the media blob store (see media_store.py).
 # References live in records; the bytes are on disk here and are never committed.
 *.db
-smooth_media/
-smooth_test_media/
+loobric_server_media/
+loobric_server_test_media/
 
 # IDE
 .vscode/

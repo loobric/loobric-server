@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 """
-Setup configuration for Smooth Core.
+Setup configuration for Loobric Core.
 
 This makes the package pip-installable.
 """
@@ -48,18 +48,18 @@ mysql_requires = [
 ]
 
 setup(
-    name="smooth-core",
+    name="loobric-server",
     version="1.0.0",
-    author="Smooth Contributors",
+    author="Loobric Contributors",
     author_email="",
     description="Vendor-neutral tool data synchronization system",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/sliptonic/smooth-core",
+    url="https://github.com/sliptonic/loobric-server",
     project_urls={
-        "Bug Tracker": "https://github.com/sliptonic/smooth-core/issues",
-        "Documentation": "https://github.com/sliptonic/smooth-core/blob/main/README.md",
-        "Source Code": "https://github.com/sliptonic/smooth-core",
+        "Bug Tracker": "https://github.com/sliptonic/loobric-server/issues",
+        "Documentation": "https://github.com/sliptonic/loobric-server/blob/main/README.md",
+        "Source Code": "https://github.com/sliptonic/loobric-server",
     },
     packages=find_packages(exclude=["tests", "tests.*"]),
     classifiers=[
@@ -84,7 +84,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "smooth-server=smooth.main:cli",
+            "loobric-server=loobric_server.main:cli",
         ],
     },
     include_package_data=True,

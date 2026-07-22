@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **smooth-core** are recorded here. This project adheres to
+All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
 ## [0.3.6] — 2026-06-29
@@ -8,7 +8,7 @@ All notable changes to **smooth-core** are recorded here. This project adheres t
 ### Fixed
 - **`GET /api/v1/auth/me` now returns `is_admin`.** The response omitted it, so a
   client could not tell an admin from a regular user — which left the Web UI's
-  admin-only Users tab (0.3.5) hidden even for admins, and made `smooth whoami`
+  admin-only Users tab (0.3.5) hidden even for admins, and made `loobric whoami`
   print `Admin: None`. The Web UI now also falls back to `role === "admin"` when
   reading the admin signal, so it lights up correctly against any 0.3.5+ server.
 
@@ -60,12 +60,12 @@ All notable changes to **smooth-core** are recorded here. This project adheres t
 - **`GET /api/v1/auth/me` now accepts API-key (Bearer) auth**, not just a session
   cookie. It previously read only the cookie, so an API-key client got a 401 here
   even though every data endpoint accepted the same key — which broke the
-  API-key-first flow (`smooth whoami`) and, in solo mode, made `/auth/me` the one
+  API-key-first flow (`loobric whoami`) and, in solo mode, made `/auth/me` the one
   endpoint that 401'd. It now uses the same `get_authenticated_user` dependency as
   the rest of the API (session / Bearer / solo).
 
 ### Changed
-- Bumped `smooth.version.__version__` to match `pyproject` (it had been pinned at
+- Bumped `loobric_server.version.__version__` to match `pyproject` (it had been pinned at
   `0.2.0`), so the `/version` endpoint again reports the running build and a
   redeploy is verifiable.
 
@@ -89,7 +89,7 @@ surfaces and the operator fulfils by mounting.
 - A schema **migration spine** and self-describing backups.
 
 ### Changed
-- The client was **extracted into `smooth-client`** and removed from the server.
+- The client was **extracted into `loobric-cli`** and removed from the server.
 - The web UI "refresh from machine" now merges membership instead of replacing it.
 
 ## [0.2.0] — 2026-06-21
@@ -184,4 +184,4 @@ the reference client.
 - Two `test_registration_security.py` tests fail due to a pre-existing
   test-isolation defect (they assume an empty DB); not a code regression.
 
-[0.1.0]: https://github.com/loobric/smooth-core/releases/tag/v0.1.0
+[0.1.0]: https://github.com/loobric/loobric-server/releases/tag/v0.1.0

@@ -5,7 +5,7 @@
 """Contract tests for the sectioned ToolTableEntryRecord facade — the machine
 entry, with the install-once invariant (bind / 409 / move)."""
 import pytest
-from smooth.contract import ToolTableEntry, Provenance, UNKNOWN
+from loobric_server.contract import ToolTableEntry, Provenance, UNKNOWN
 
 BASE = "/api/v1/tool-table-entry-records"
 

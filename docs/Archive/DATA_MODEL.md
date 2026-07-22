@@ -1,6 +1,6 @@
 # Data Model
 
-This document describes the core data model of Smooth Core, including entity relationships and field definitions.
+This document describes the core data model of Loobric Core, including entity relationships and field definitions.
 
 ## Core Entities
 

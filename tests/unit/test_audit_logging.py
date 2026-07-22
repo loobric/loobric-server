@@ -25,8 +25,8 @@ def test_audit_log_create(db_session):
     - Required fields present
     - Timestamp auto-generated
     """
-    from smooth.audit import create_audit_log
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -57,8 +57,8 @@ def test_audit_log_required_fields(db_session):
     Assumptions:
     - user_id, operation, entity_type, entity_id required
     """
-    from smooth.audit import create_audit_log
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -81,9 +81,9 @@ def test_audit_log_immutability(db_session):
     - Once created, audit logs are read-only
     - No update or delete methods provided
     """
-    from smooth.audit import create_audit_log
-    from smooth.database.schema import AuditLog
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log
+    from loobric_server.database.schema import AuditLog
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -127,8 +127,8 @@ def test_audit_log_tracks_changes(db_session):
     - changes field contains before/after or new values
     - Stored as JSON for querying
     """
-    from smooth.audit import create_audit_log
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -158,8 +158,8 @@ def test_audit_log_query_by_user(db_session):
     Assumptions:
     - Can filter by user_id for compliance
     """
-    from smooth.audit import create_audit_log, get_audit_logs_by_user
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log, get_audit_logs_by_user
+    from loobric_server.auth.user import create_user
     
     user1 = create_user(db_session, "user1@example.com", "Password123")
     user2 = create_user(db_session, "user2@example.com", "Password123")
@@ -199,8 +199,8 @@ def test_audit_log_query_by_entity(db_session):
     - Can filter by entity_type and entity_id
     - Useful for entity history
     """
-    from smooth.audit import create_audit_log, get_audit_logs_by_entity
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log, get_audit_logs_by_entity
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -233,8 +233,8 @@ def test_audit_log_failed_operations(db_session):
     - Failed operations also logged for forensics
     - result field indicates success/failure
     """
-    from smooth.audit import create_audit_log
-    from smooth.auth.user import create_user
+    from loobric_server.audit import create_audit_log
+    from loobric_server.auth.user import create_user
     
     user = create_user(db_session, "test@example.com", "Password123")
     

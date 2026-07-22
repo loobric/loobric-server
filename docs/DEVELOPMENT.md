@@ -1,4 +1,4 @@
-# Smooth Core Development Guide
+# Loobric Core Development Guide
 
 ## Development Documentation
 1. **[Development Guide](DEVELOPMENT.md)** - This document 
@@ -18,8 +18,8 @@
 
 1. Fork and clone the repository:
    ```bash
-   git clone https://github.com/your-username/smooth-core.git
-   cd smooth-core
+   git clone https://github.com/your-username/loobric-server.git
+   cd loobric-server
    ```
 
 2. Set up the development environment:
@@ -36,14 +36,14 @@
 
 4. Start the development server:
    ```bash
-   uvicorn smooth.main:app --reload
+   uvicorn loobric_server.main:app --reload
    ```
 
 ## Repo Organization
 
 ```
-smooth-core/
-├── smooth/               # Main package
+loobric-server/
+├── loobric_server/               # Main package
 │   ├── api/             # API endpoints and routers (v2 sectioned records)
 │   ├── auth/            # Authentication & authorization
 │   ├── contract/        # Authoritative contract models (tool schema, §10)
@@ -64,7 +64,7 @@ smooth-core/
 ### Running Tests
 ```bash
 # Run tests with coverage
-pytest --cov=smooth tests/
+pytest --cov=loobric_server tests/
 
 # Run specific test file
 pytest tests/unit/test_module.py
@@ -102,13 +102,13 @@ def test_unauthenticated_endpoint(client, disable_auth):
 
 ## Database Schema & Migrations
 
-Tables are created on startup by `init_db()` (`smooth/database/session.py`), which
+Tables are created on startup by `init_db()` (`loobric_server/database/session.py`), which
 calls SQLAlchemy `create_all` (missing tables only) and then runs the **migration
-spine** (`smooth/migrations/`) to evolve existing tables. There is no Alembic — the
+spine** (`loobric_server/migrations/`) to evolve existing tables. There is no Alembic — the
 spine is a small in-repo, forward-only runner; see [MIGRATIONS.md](MIGRATIONS.md).
 
 To change the schema of an existing table, add a migration file
-`smooth/migrations/NNNN_name.py` exposing `revision`, `name`, and an **idempotent**
+`loobric_server/migrations/NNNN_name.py` exposing `revision`, `name`, and an **idempotent**
 `upgrade(conn)` (guard every change — on SQLite a failed DDL is not rolled back, so a
 failed migration is retried and must tolerate partial state). It runs automatically on
 the next startup, and the applied set is recorded in the `schema_migrations` table.
@@ -118,7 +118,7 @@ the next startup, and the applied set is recorded in the `schema_migrations` tab
 
 1. Start the development server:
    ```bash
-   uvicorn smooth.main:app --reload
+   uvicorn loobric_server.main:app --reload
    ```
 
 2. Access interactive documentation:

@@ -11,14 +11,14 @@ falls back to the geometry heuristic otherwise. The rejected-pair guard holds.
 """
 import pytest
 
-from smooth.binding_v2 import (
+from loobric_server.binding_v2 import (
     requested_members_by_number, propose_for_requested_entry,
     REQUESTED_CONFIDENCE, DIAMETER_WEIGHT,
 )
-from smooth.database.schema import (
+from loobric_server.database.schema import (
     User, ToolSetRecord, ToolTableEntryRecord, ToolInstanceRecord, EntryProposal,
 )
-from smooth.contract import Provenance, UNKNOWN
+from loobric_server.contract import Provenance, UNKNOWN
 
 UID = "user-req"
 MACHINE = "m-req-bridge"

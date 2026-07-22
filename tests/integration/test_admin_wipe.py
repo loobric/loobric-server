@@ -34,7 +34,7 @@ def test_wipe_refused_without_exact_confirmation(client):
 
 @pytest.mark.integration
 def test_wipe_removes_all_data_accounts_and_keys(client, db_session):
-    from smooth.database.schema import User, ApiKey, MachineRecord
+    from loobric_server.database.schema import User, ApiKey, MachineRecord
 
     _register_and_login_admin(client)
     client.post("/api/v1/machine-records", json={})   # a little data
@@ -59,8 +59,8 @@ def test_wipe_removes_all_data_accounts_and_keys(client, db_session):
 
 @pytest.mark.integration
 def test_wipe_requires_admin(client, db_session):
-    from smooth.database.schema import User
-    from smooth.auth.password import hash_password
+    from loobric_server.database.schema import User
+    from loobric_server.auth.password import hash_password
 
     _register_and_login_admin(client)   # first user = admin
     nonadmin = User(email="u@example.com", password_hash=hash_password("user123"),
@@ -80,7 +80,7 @@ def test_wipe_requires_admin(client, db_session):
 
 @pytest.mark.integration
 def test_after_wipe_next_registration_becomes_admin(client, db_session):
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
 
     _register_and_login_admin(client, email="first@example.com")
     assert client.post("/api/v1/admin/wipe",

@@ -1,5 +1,5 @@
 [project]
-name = "smooth"
+name = "loobric-server"
 version = "0.3.6"
 description = "Vendor-neutral tool data synchronization system"
 readme = "README.md"
@@ -34,7 +34,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["smooth"]
+packages = ["loobric_server"]
 
 [tool.ruff]
 line-length = 100
@@ -60,7 +60,7 @@ addopts = [
     "-v",
     "--strict-markers",
     "--tb=short",
-    "--cov=smooth",
+    "--cov=loobric_server",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]

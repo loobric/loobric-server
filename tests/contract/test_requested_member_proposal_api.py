@@ -17,7 +17,7 @@ geometry heuristic, behaving exactly as today.
 """
 import pytest
 
-from smooth.contract import ToolSet
+from loobric_server.contract import ToolSet
 
 SET = "/api/v1/tool-set-records"
 ENTRY = "/api/v1/tool-table-entry-records"

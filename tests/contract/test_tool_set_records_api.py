@@ -5,7 +5,7 @@
 """Contract tests for the sectioned ToolSetRecord facade — the agnostic
 collection."""
 import pytest
-from smooth.contract import ToolSet, UNKNOWN
+from loobric_server.contract import ToolSet, UNKNOWN
 
 BASE = "/api/v1/tool-set-records"
 ENTRY = "/api/v1/tool-table-entry-records"

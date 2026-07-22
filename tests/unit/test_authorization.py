@@ -28,7 +28,7 @@ def test_has_scope_with_exact_match():
     - Exact scope match returns True
     - Scopes are case-sensitive
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     scopes = ["read", "write:items", "write:presets"]
     
@@ -45,7 +45,7 @@ def test_has_scope_without_match():
     - Missing scope returns False
     - Does not raise exception
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     scopes = ["read"]
     
@@ -61,7 +61,7 @@ def test_has_scope_with_wildcard():
     - "admin:*" grants all permissions
     - "write:*" grants write to all entities
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     admin_scopes = ["admin:*"]
     
@@ -79,7 +79,7 @@ def test_has_scope_with_entity_wildcard():
     - "write:*" grants write access to all entity types
     - "admin:items" grants all operations on items
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     write_all_scopes = ["write:*"]
     assert has_scope(write_all_scopes, "write:items") is True
@@ -98,7 +98,7 @@ def test_require_scope_success():
     Assumptions:
     - Returns None (no exception) if scope present
     """
-    from smooth.auth.authorization import require_scope
+    from loobric_server.auth.authorization import require_scope
     
     scopes = ["read", "write:items"]
     
@@ -115,7 +115,7 @@ def test_require_scope_failure():
     - Raises PermissionDeniedError if scope missing
     - Error includes helpful message
     """
-    from smooth.auth.authorization import require_scope, PermissionDeniedError
+    from loobric_server.auth.authorization import require_scope, PermissionDeniedError
     
     scopes = ["read"]
     
@@ -133,7 +133,7 @@ def test_check_resource_ownership_same_user():
     - User can access their own resources
     - Returns True for same user_id
     """
-    from smooth.auth.authorization import check_resource_ownership
+    from loobric_server.auth.authorization import check_resource_ownership
     
     user_id = "user-123"
     resource_owner_id = "user-123"
@@ -149,7 +149,7 @@ def test_check_resource_ownership_different_user():
     - Non-admin cannot access other users' resources
     - Returns False for different user_id
     """
-    from smooth.auth.authorization import check_resource_ownership
+    from loobric_server.auth.authorization import check_resource_ownership
     
     user_id = "user-123"
     resource_owner_id = "user-456"
@@ -165,7 +165,7 @@ def test_check_resource_ownership_admin():
     - Admin can access any user's resources
     - Returns True even for different user_id
     """
-    from smooth.auth.authorization import check_resource_ownership
+    from loobric_server.auth.authorization import check_resource_ownership
     
     admin_user_id = "admin-123"
     resource_owner_id = "user-456"
@@ -181,7 +181,7 @@ def test_require_resource_ownership_success():
     - No exception if user owns resource
     - No exception if user is admin
     """
-    from smooth.auth.authorization import require_resource_ownership
+    from loobric_server.auth.authorization import require_resource_ownership
     
     # Same user - should not raise
     require_resource_ownership("user-123", "user-123", is_admin=False)
@@ -198,7 +198,7 @@ def test_require_resource_ownership_failure():
     - Raises PermissionDeniedError if user doesn't own resource
     - Error message is helpful
     """
-    from smooth.auth.authorization import require_resource_ownership, PermissionDeniedError
+    from loobric_server.auth.authorization import require_resource_ownership, PermissionDeniedError
     
     with pytest.raises(PermissionDeniedError) as exc_info:
         require_resource_ownership("user-123", "user-456", is_admin=False)
@@ -214,7 +214,7 @@ def test_filter_by_user_for_regular_user():
     - Regular users see only their own data
     - Returns query filtered by user_id
     """
-    from smooth.auth.authorization import should_filter_by_user
+    from loobric_server.auth.authorization import should_filter_by_user
     
     # Regular user should be filtered
     assert should_filter_by_user(is_admin=False) is True
@@ -228,7 +228,7 @@ def test_filter_by_user_for_admin():
     - Admins see all data (no filtering)
     - Returns False for admin users
     """
-    from smooth.auth.authorization import should_filter_by_user
+    from loobric_server.auth.authorization import should_filter_by_user
     
     # Admin should not be filtered
     assert should_filter_by_user(is_admin=True) is False
@@ -242,8 +242,8 @@ def test_get_authorization_context():
     - Returns dict with user_id, is_admin, scopes
     - Used for passing auth context to functions
     """
-    from smooth.auth.authorization import get_authorization_context
-    from smooth.database.schema import User
+    from loobric_server.auth.authorization import get_authorization_context
+    from loobric_server.database.schema import User
     
     user = User(
         id="user-123",
@@ -270,7 +270,7 @@ def test_log_authorization_decision():
     - Logs authorization decisions for audit trail
     - Includes user, action, resource, result
     """
-    from smooth.auth.authorization import log_authorization_decision
+    from loobric_server.auth.authorization import log_authorization_decision
     
     # Should not raise
     log_authorization_decision(
@@ -300,7 +300,7 @@ def test_read_permission_allows_all_entities():
     - Single 'read' scope covers all entities
     - Don't need entity-specific read scopes
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     scopes = ["read"]
     
@@ -316,7 +316,7 @@ def test_write_permission_is_entity_specific():
     - write:items only allows writing items
     - Need separate scope for each entity type
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     scopes = ["write:items"]
     
@@ -333,7 +333,7 @@ def test_permission_hierarchy():
     - admin:items grants write:items and read
     - This may or may not be implemented with scope expansion
     """
-    from smooth.auth.authorization import has_scope
+    from loobric_server.auth.authorization import has_scope
     
     # Test that admin scope grants lower permissions
     admin_scopes = ["admin:items"]
@@ -353,7 +353,7 @@ def test_machine_specific_scope():
     - API keys can be limited to specific machine_id
     - Enforced at authorization layer
     """
-    from smooth.auth.authorization import check_machine_access
+    from loobric_server.auth.authorization import check_machine_access
     
     # Key limited to specific machine
     machine_id_restriction = "mill-01"

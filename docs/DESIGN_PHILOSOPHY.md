@@ -1,13 +1,13 @@
 
 # Design Philosophy
 
-Smooth Core is built using AI tools and principles.  This document should be reviewed and incorporated by all AI agents working on Smooth.
+Loobric Core is built using AI tools and principles.  This document should be reviewed and incorporated by all AI agents working on Loobric.
 
 ## General AI Prompt
 
-AI agents working on Smooth should incorporate the following prompts into their responses:
+AI agents working on Loobric should incorporate the following prompts into their responses:
 
-1. Review and incorporate the Smooth Design Philosophy document into all responses. Ask the user questions if the design philosophy is unclear. 
+1. Review and incorporate the Loobric Design Philosophy document into all responses. Ask the user questions if the design philosophy is unclear. 
 2. Favor a functional style of programming over an object-oriented style.
 3. Docstrings will be included for every function, class, and module. Docstrings should accurately document the assumptions of the code. If those assumptions change, the docstring MUST be updated accordingly. Do NOT change the docstrings without confirming with the user that the change is intentional.
 4. Unit testing is required for all code. Minimize the need for mocks and stubs. If mocks or stubs are required, document the assumptions in the docstring.
@@ -21,7 +21,7 @@ AI agents working on Smooth should incorporate the following prompts into their 
 
 ## Core Design Assumptions
 
-Smooth is built on five foundational infrastructure principles that inform all implementation decisions:
+Loobric is built on five foundational infrastructure principles that inform all implementation decisions:
 
 ### 1. Backup and Restore First
 

@@ -27,8 +27,8 @@ def test_get_changes_since_version(db_session):
     - Includes newly created and updated entities
     - Respects user_id filtering for non-admin users
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_version
     
     user_id = "user-123"
     
@@ -86,8 +86,8 @@ def test_get_changes_since_timestamp(db_session):
     - Includes newly created and updated entities
     - Respects user_id filtering
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_timestamp
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_timestamp
     
     user_id = "user-123"
     base_time = datetime.now(UTC)
@@ -143,8 +143,8 @@ def test_change_detection_respects_user_isolation(db_session):
     - Regular users filtered by user_id
     - Admin users see all changes
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_version
     
     user1_id = "user-1"
     user2_id = "user-2"
@@ -191,8 +191,8 @@ def test_admin_sees_all_changes(db_session):
     - Admin users not filtered by user_id
     - Returns changes from all users
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_version
     
     user1_id = "user-1"
     user2_id = "user-2"
@@ -239,8 +239,8 @@ def test_change_detection_with_limit(db_session):
     - Supports pagination with limit parameter
     - Results ordered by version (ascending)
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_version
     
     user_id = "user-123"
     
@@ -282,8 +282,8 @@ def test_get_max_version(db_session):
     - Used by clients to track sync state
     - Respects user_id filtering
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_max_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_max_version
     
     user_id = "user-123"
     
@@ -334,8 +334,8 @@ def test_get_max_version_returns_zero_when_empty(db_session):
     - Returns 0 for empty result set
     - Clients can start with version 0
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_max_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_max_version
     
     max_ver = get_max_version(
         session=db_session,
@@ -355,8 +355,8 @@ def test_changes_ordered_by_version(db_session):
     - Results ordered by version ascending
     - Allows clients to process changes sequentially
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_version
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_version
     
     user_id = "user-123"
     
@@ -411,8 +411,8 @@ def test_changes_ordered_by_timestamp(db_session):
     - Results ordered by updated_at ascending
     - Oldest changes first
     """
-    from smooth.database.schema import ToolItem
-    from smooth.change_detection import get_changes_since_timestamp
+    from loobric_server.database.schema import ToolItem
+    from loobric_server.change_detection import get_changes_since_timestamp
     
     user_id = "user-123"
     base_time = datetime.now(UTC)

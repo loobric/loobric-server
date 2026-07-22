@@ -32,7 +32,7 @@ def test_root_endpoint(client):
     assert response.status_code == 200
     data = response.json()
     assert "service" in data
-    assert data["service"] == "smooth"
+    assert data["service"] == "loobric_server"
     assert "version" in data
     assert "status" in data
 
@@ -41,7 +41,7 @@ def test_root_endpoint(client):
 def test_version_endpoint(client):
     """The unauthenticated /version endpoint reports the server's build identity
     (version + git commit) so a client can verify which code a server runs."""
-    from smooth.version import __version__
+    from loobric_server.version import __version__
     response = client.get("/api/v1/version")
     assert response.status_code == 200
     data = response.json()

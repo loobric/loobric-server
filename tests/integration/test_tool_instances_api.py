@@ -29,9 +29,9 @@ def test_bulk_create_tool_instances(client, db_session):
     - assembly_id references parent assembly
     - status defaults to 'available'
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -87,9 +87,9 @@ def test_create_validates_required_fields(client, db_session):
     - assembly_id is required
     - Returns error for invalid items
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -138,9 +138,9 @@ def test_bulk_read_tool_instances(client, db_session):
     - GET returns array of instances
     - Filters by user_id automatically
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -188,9 +188,9 @@ def test_filter_by_status(client, db_session):
     Assumptions:
     - Supports status filter parameter
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -240,9 +240,9 @@ def test_bulk_update_tool_instances(client, db_session):
     - Can update status, location, measured_geometry
     - Version field incremented
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -311,9 +311,9 @@ def test_bulk_update_tool_instances(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_instance_success(client, db_session):
     """Test retrieving a single tool instance by ID."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
 
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -352,9 +352,9 @@ def test_get_single_tool_instance_success(client, db_session):
 @pytest.mark.integration
 def test_get_single_tool_instance_not_found_other_user(client, db_session):
     """Test retrieving another user's tool instance returns 404."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
 
     owner = create_user(db_session, "owner@example.com", "Password123")
     other = create_user(db_session, "other@example.com", "Password123")
@@ -391,9 +391,9 @@ def test_get_single_tool_instance_not_found_other_user(client, db_session):
 @pytest.mark.integration
 def test_bulk_delete_tool_instances(client, db_session):
     """Test bulk delete of instances."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

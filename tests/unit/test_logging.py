@@ -26,7 +26,7 @@ def test_structlog_produces_json_output():
     - Log output is valid JSON
     - JSON contains standard fields: timestamp, level, event
     """
-    from smooth.logging_config import get_logger
+    from loobric_server.logging_config import get_logger
     
     # Create logger
     logger = get_logger("test")
@@ -50,7 +50,7 @@ def test_context_binding_user_id():
     - Context binding persists across log calls
     - user_id appears in all subsequent log entries
     """
-    from smooth.logging_config import get_logger, bind_context
+    from loobric_server.logging_config import get_logger, bind_context
     
     logger = get_logger("test")
     
@@ -72,7 +72,7 @@ def test_context_binding_request_id():
     - request_id is automatically generated if not provided
     - request_id appears in all log entries within request scope
     """
-    from smooth.logging_config import get_logger, bind_context
+    from loobric_server.logging_config import get_logger, bind_context
     
     logger = get_logger("test")
     
@@ -93,7 +93,7 @@ def test_log_level_configuration():
     - Can be configured via LOG_LEVEL environment variable
     - Levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
     """
-    from smooth.logging_config import configure_logging
+    from loobric_server.logging_config import configure_logging
     
     # Configure with DEBUG level
     configure_logging(log_level="DEBUG")
@@ -110,7 +110,7 @@ def test_application_log_utility():
     - Application logs include: timestamp, level, event, context
     - Used for API requests, database operations, etc.
     """
-    from smooth.logging_utils import log_application_event
+    from loobric_server.logging_utils import log_application_event
     
     # Log application event
     log_application_event(
@@ -132,7 +132,7 @@ def test_audit_log_utility():
     - Include: user_id, timestamp, operation, entity_type, entity_id, changes
     - Used for all data modifications
     """
-    from smooth.logging_utils import log_audit_event
+    from loobric_server.logging_utils import log_audit_event
     
     # Log audit event
     log_audit_event(
@@ -154,7 +154,7 @@ def test_security_log_utility():
     - Security logs include: timestamp, event, user_id, ip_address
     - Used for failed auth, permission denials, suspicious activity
     """
-    from smooth.logging_utils import log_security_event
+    from loobric_server.logging_utils import log_security_event
     
     # Log security event
     log_security_event(
@@ -175,7 +175,7 @@ def test_log_entry_structure():
     - All logs contain: timestamp, level, event
     - Additional fields vary by log type
     """
-    from smooth.logging_utils import log_application_event
+    from loobric_server.logging_utils import log_application_event
     
     # This test will verify actual JSON structure once implemented
     log_application_event(event="test")
@@ -191,7 +191,7 @@ def test_pretty_printing_for_development():
     - Development mode (not JSON) when LOG_JSON=false
     - Production mode (JSON) when LOG_JSON=true
     """
-    from smooth.logging_config import configure_logging
+    from loobric_server.logging_config import configure_logging
     
     # Configure for development (pretty printing)
     configure_logging(json_output=False)
@@ -208,7 +208,7 @@ def test_log_sanitization():
     - API keys never logged (only key_id)
     - PII is redacted or not logged
     """
-    from smooth.logging_utils import log_audit_event
+    from loobric_server.logging_utils import log_audit_event
     
     # Attempt to log sensitive data
     # Implementation should sanitize

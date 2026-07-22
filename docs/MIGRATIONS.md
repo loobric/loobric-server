@@ -1,14 +1,14 @@
 # Schema Migrations — Design
 
 > Status: **Phase 1 implemented** (2026-06-21) — the ledger, runner, baseline, and startup
-> wiring live in `smooth/migrations/` with tests; the later phases below remain proposed.
+> wiring live in `loobric_server/migrations/` with tests; the later phases below remain proposed.
 > It addresses the top data-durability gap: an upgrade that changes an existing table used to
 > break a populated database with a silent `no such column` 500, with no way to tell what
 > schema version a database was at.
 
 ## The problem (what exists today)
 
-- `init_db()` (`smooth/database/session.py`) calls SQLAlchemy `create_all`, which creates
+- `init_db()` (`loobric_server/database/session.py`) calls SQLAlchemy `create_all`, which creates
   **missing tables only**. It never adds columns to, or alters, existing tables — the code
   comment says so, and notes it *"bit production on the v2 cutover."*
 - There is **no schema-version record** anywhere in the database. Nothing can answer
@@ -56,7 +56,7 @@ One small table, the source of truth for "what has been applied":
 
 The **current schema version** is `MAX(revision)` in this table.
 
-### 2. Migration units: `smooth/migrations/NNNN_name.py`
+### 2. Migration units: `loobric_server/migrations/NNNN_name.py`
 
 Each migration is a Python module — full flexibility for SQLite's create-copy-swap pattern,
 unlike raw `.sql`:
@@ -82,10 +82,10 @@ schema changes ship as `NNNN_name.py` units from the start.)
 ```
 ensure schema_migrations exists
 applied  = {rows in schema_migrations}
-defined  = discover smooth/migrations/*.py, sorted by revision
+defined  = discover loobric_server/migrations/*.py, sorted by revision
 pending  = [m for m in defined if m.revision not in applied]
 if pending:
-    take ONE timestamped backup before the batch (reuse smooth/backup.py)
+    take ONE timestamped backup before the batch (reuse loobric_server/backup.py)
     for m in pending:
         with engine.begin() as conn:   # transactional per migration
             m.upgrade(conn)
@@ -149,12 +149,12 @@ under "Deferred" in [ROADMAP.md](../ROADMAP.md); do not build it into the spine.
 ## Phased implementation
 
 1. **Ledger + runner + baseline** — `schema_migrations`, `0001_baseline`, wired into
-   `init_db()`. ✅ **Done** (`smooth/migrations/`, `tests/integration/test_migrations.py`):
+   `init_db()`. ✅ **Done** (`loobric_server/migrations/`, `tests/integration/test_migrations.py`):
    fresh / legacy / managed boot, idempotent re-run, failure-aborts-without-recording with
    idempotent retry, checksum drift, and the safety-backup hook.
-2. **Backup revision + restore drift handling.** ✅ **Done** (`smooth/backup.py`,
+2. **Backup revision + restore drift handling.** ✅ **Done** (`loobric_server/backup.py`,
    `tests/unit/test_backup.py`): export stamps `schema_revision`; restore refuses a
    newer-than-head backup and accepts equal / older / absent.
 
 The spine is complete. Future schema changes are added as new
-`smooth/migrations/NNNN_name.py` units, each with an idempotent `upgrade(conn)`.
+`loobric_server/migrations/NNNN_name.py` units, each with an idempotent `upgrade(conn)`.

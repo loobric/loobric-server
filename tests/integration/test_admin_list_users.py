@@ -21,8 +21,8 @@ def _register_and_login_admin(client, email="admin@example.com", pw="password123
 
 @pytest.mark.integration
 def test_list_users_counts_and_summarizes_accounts(client, db_session):
-    from smooth.auth.password import hash_password
-    from smooth.database.schema import User
+    from loobric_server.auth.password import hash_password
+    from loobric_server.database.schema import User
 
     _register_and_login_admin(client)   # first user = admin
     db_session.add(User(email="u@example.com", password_hash=hash_password("user123"),
@@ -66,8 +66,8 @@ def test_list_users_never_leaks_secrets(client):
 
 @pytest.mark.integration
 def test_list_users_requires_admin(client, db_session):
-    from smooth.auth.password import hash_password
-    from smooth.database.schema import User
+    from loobric_server.auth.password import hash_password
+    from loobric_server.database.schema import User
 
     _register_and_login_admin(client)   # first user = admin
     db_session.add(User(email="u@example.com", password_hash=hash_password("user123"),

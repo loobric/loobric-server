@@ -17,14 +17,14 @@ Assumptions:
 - Session auth bypasses tag checks (user owns all their resources)
 """
 import pytest
-from smooth.database.schema import ToolItem
+from loobric_server.database.schema import ToolItem
 
 
 @pytest.mark.integration
 def test_create_tool_item_with_api_key_tags(client, db_session):
     """Test creating tool items with API key that has tags."""
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -80,8 +80,8 @@ def test_create_tool_item_with_api_key_tags(client, db_session):
 @pytest.mark.integration
 def test_list_tool_items_filtered_by_api_key_tags(client, db_session):
     """Test listing tool items is filtered by API key tags."""
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -144,8 +144,8 @@ def test_list_tool_items_filtered_by_api_key_tags(client, db_session):
 @pytest.mark.integration
 def test_get_tool_item_with_tag_access(client, db_session):
     """Test getting single tool item with tag-based access control."""
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -200,8 +200,8 @@ def test_get_tool_item_with_tag_access(client, db_session):
 @pytest.mark.integration
 def test_update_tool_item_with_tag_enforcement(client, db_session):
     """Test updating tool items with tag-based access control."""
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -271,8 +271,8 @@ def test_update_tool_item_with_tag_enforcement(client, db_session):
 @pytest.mark.integration
 def test_delete_tool_item_with_tag_enforcement(client, db_session):
     """Test deleting tool items with tag-based access control."""
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -336,8 +336,8 @@ def test_delete_tool_item_with_tag_enforcement(client, db_session):
 @pytest.mark.integration
 def test_session_auth_bypasses_tag_checks_tool_items(client, db_session):
     """Test that session authentication bypasses tag checks for tool items."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

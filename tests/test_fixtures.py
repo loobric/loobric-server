@@ -76,7 +76,7 @@ def test_db_with_sample_data_fixture(db_with_sample_data):
     - Database has been populated via backup restore
     - Contains user and tool items
     """
-    from smooth.database.schema import User, ToolInstanceRecord, ApiKey
+    from loobric_server.database.schema import User, ToolInstanceRecord, ApiKey
 
     # Verify data was loaded
     users = db_with_sample_data.query(User).all()

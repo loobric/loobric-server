@@ -20,7 +20,7 @@ It exercises the #37 (reconcile/state) + #38 (refresh-is-a-merge) + #39
 """
 import pytest
 
-from smooth.contract import ToolSet
+from loobric_server.contract import ToolSet
 
 SET = "/api/v1/tool-set-records"
 ENTRY = "/api/v1/tool-table-entry-records"
@@ -34,7 +34,7 @@ SET_NAME = "millstone"
 # -- helpers: the moves a real client would make through the real endpoints ----
 
 def _sync(client, entries, mode="merge"):
-    """The controller push (smooth-linuxcnc)."""
+    """The controller push (loobric-linuxcnc)."""
     return client.post(f"{ENTRY}/sync", json={
         "machine_id": MACHINE, "client": "linuxcnc", "machine_name": MACHINE,
         "client_version": "0.2", "mode": mode, "force": False, "entries": entries})
@@ -73,7 +73,7 @@ def _seed_17_in_sync(client):
     """ROUNDTRIP steps 1-3 condensed: controller's first sync creates 17 observed
     entries, the operator binds each to its physical tool. Returns the 17 instance
     ids (T1..T17), in pocket order."""
-    # Step 1: smooth-linuxcnc first sync -> 17 observed entries (snapshot).
+    # Step 1: loobric-linuxcnc first sync -> 17 observed entries (snapshot).
     r = _sync(client, [{"tool_number": n,
                         "offsets": {"diameter": float(n), "diameter_unit": "mm"}}
                        for n in range(1, 18)], mode="snapshot")

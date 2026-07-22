@@ -3,12 +3,12 @@
 ## Run Locally
 
 ```bash
-git clone https://github.com/loobric/smooth-core.git
-cd smooth-core
+git clone https://github.com/loobric/loobric-server.git
+cd loobric-server
 uv venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
-uvicorn smooth.main:app --reload
+uvicorn loobric_server.main:app --reload
 ```
 
 ## Self-Hosted
@@ -19,7 +19,7 @@ TBD
 Environment variables (see `.env.example`):
 ```bash
 # Database
-DATABASE_URL=sqlite:///./smooth.db  # or postgresql://...
+DATABASE_URL=sqlite:///./loobric.db  # or postgresql://...
 
 # Authentication
 AUTH_ENABLED=true
@@ -42,7 +42,7 @@ LOG_LEVEL=INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 **Configuration:**
 ```bash
 # In .env file
-DATABASE_URL=sqlite:///./data/smooth.db
+DATABASE_URL=sqlite:///./data/loobric.db
 ```
 
 **Advantages:**
@@ -55,7 +55,7 @@ DATABASE_URL=sqlite:///./data/smooth.db
 **Backup:**
 ```bash
 # Simple file copy
-cp ./data/smooth.db ./backups/smooth_$(date +%Y%m%d).db
+cp ./data/loobric.db ./backups/loobric_server_$(date +%Y%m%d).db
 ```
 
 ### PostgreSQL (Optional for Scale)
@@ -73,19 +73,19 @@ cp ./data/smooth.db ./backups/smooth_$(date +%Y%m%d).db
 DATABASE_URL=postgresql://username:password@host:5432/database
 
 # With docker-compose
-POSTGRES_DB=smooth
-POSTGRES_USER=smooth
+POSTGRES_DB=loobric_server
+POSTGRES_USER=loobric_server
 POSTGRES_PASSWORD=your-secure-password
-DATABASE_URL=postgresql://smooth:your-secure-password@db:5432/smooth
+DATABASE_URL=postgresql://loobric_server:your-secure-password@db:5432/loobric_server
 ```
 
 **Backup:**
 ```bash
 # PostgreSQL dump
-pg_dump -U smooth smooth > backup.sql
+pg_dump -U loobric_server loobric_server > backup.sql
 
 # With docker
-docker exec postgres pg_dump -U smooth smooth > backup.sql
+docker exec postgres pg_dump -U loobric_server loobric_server > backup.sql
 ```
 
 ## Docker
@@ -97,15 +97,15 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: smooth
-      POSTGRES_USER: smooth
+      POSTGRES_DB: loobric_server
+      POSTGRES_USER: loobric_server
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       
-  smooth-core:
+  loobric-server:
     environment:
-      DATABASE_URL: postgresql://smooth:${POSTGRES_PASSWORD}@db:5432/smooth
+      DATABASE_URL: postgresql://loobric_server:${POSTGRES_PASSWORD}@db:5432/loobric_server
     depends_on:
       - db
 ```

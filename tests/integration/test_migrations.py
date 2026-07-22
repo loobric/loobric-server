@@ -1,7 +1,7 @@
 # GNU Affero General Public License v3.0 only
 # Copyright (c) 2025 sliptonic
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Tests for the schema migration spine (smooth/migrations).
+"""Tests for the schema migration spine (loobric_server/migrations).
 
 Covers the three boot states (fresh / legacy / managed), idempotent re-runs,
 failure-aborts-without-recording, checksum drift, and the safety backup hook.
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from smooth.migrations import (
+from loobric_server.migrations import (
     Migration,
     MigrationError,
     discover_migrations,

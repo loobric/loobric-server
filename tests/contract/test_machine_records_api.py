@@ -6,14 +6,14 @@
 Contract tests for the sectioned Machine facade (docs/TOOL_SCHEMA.md §7.5).
 
 Proves the same pattern as the ToolInstanceRecord tracer on the wire: responses
-are the three-section shape and validate against smooth.contract; a client
+are the three-section shape and validate against loobric_server.contract; a client
 writes only its own section; routine sync cannot touch internal/canonical;
 canonical moves only through assert. A machine has NO observe door — its identity
 is declared, never measured.
 """
 import pytest
 
-from smooth.contract import Machine, Provenance, UNKNOWN
+from loobric_server.contract import Machine, Provenance, UNKNOWN
 
 BASE = "/api/v1/machine-records"
 

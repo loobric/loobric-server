@@ -1,7 +1,7 @@
 # GNU Affero General Public License v3.0 only
 # Copyright (c) 2025 sliptonic
 # SPDX-License-Identifier: AGPL-3.0-only
-"""End-to-end integration tests: drive the loobric-smooth reference client against
+"""End-to-end integration tests: drive the loobric-cli reference client against
 the REAL app in-process.
 
 These prove the server accepts the client's requests and returns shapes the
@@ -10,23 +10,23 @@ unit suite can't catch. A transport bridge routes the client's requests through 
 solo-mode TestClient (db_session-isolated), mirroring make_request's
 success/error contract.
 
-Requires the loobric-smooth package (e.g. `pip install -e ../loobric-smooth`);
+Requires the loobric-cli package (e.g. `pip install -e ../loobric-cli`);
 skipped automatically when it isn't installed.
 """
 import json
 
 import pytest
 
-pytest.importorskip("smooth_client")
-import smooth_client.cli.main as cli_main      # noqa: E402
-import smooth_client.transport as transport    # noqa: E402
-from smooth_client.errors import _http_error    # noqa: E402
+pytest.importorskip("loobric")
+import loobric.cli.main as cli_main      # noqa: E402
+import loobric.transport as transport    # noqa: E402
+from loobric.errors import _http_error    # noqa: E402
 
 
 
 def _bridge(test_client):
-    """A loobric-smooth transport that calls the in-process app, mirroring make_request:
-    parsed JSON on 2xx, the same SmoothClientError subclasses on error."""
+    """A loobric-cli transport that calls the in-process app, mirroring make_request:
+    parsed JSON on 2xx, the same LoobricClientError subclasses on error."""
     def transport(method, endpoint, body=None, extra_headers=None, require_auth=False,
                   base_url=None, api_key=None, session_cookie=None,
                   raw_body=None, content_type=None):
@@ -48,10 +48,10 @@ def _bridge(test_client):
 
 @pytest.fixture
 def app_client(db_session, monkeypatch):
-    monkeypatch.setenv("SMOOTH_SOLO", "1")
+    monkeypatch.setenv("LOOBRIC_SOLO", "1")
     from fastapi.testclient import TestClient
-    from smooth.main import create_app
-    from smooth.api.auth import get_db
+    from loobric_server.main import create_app
+    from loobric_server.api.auth import get_db
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db_session
     with TestClient(app) as c:
@@ -60,7 +60,7 @@ def app_client(db_session, monkeypatch):
 
 @pytest.fixture
 def cli(app_client, monkeypatch):
-    """Route loobric-smooth's command functions + Client through the in-process app, and
+    """Route loobric-cli's command functions + Client through the in-process app, and
     return a bridged Client for tests that need raw ids."""
     bridge = _bridge(app_client)
     monkeypatch.setattr(cli_main, "_client", lambda: cli_main.Client(transport=bridge))
@@ -418,4 +418,4 @@ def test_whoami_works_in_solo(cli):
     # user instead of 401'ing. (It used to read only the session cookie, which
     # also broke API-key clients — see test_auth.test_auth_me_accepts_api_key.)
     me = cli.whoami()
-    assert me["email"] == "solo@localhost.smooth"
+    assert me["email"] == "solo@localhost.loobric_server"

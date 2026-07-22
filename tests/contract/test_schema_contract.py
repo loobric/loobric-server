@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from smooth.contract import (
+from loobric_server.contract import (
     Field, Provenance, UNKNOWN, ClientWrite, LaneViolation, reject_out_of_lane,
     Component, ToolInstanceRecord, ToolCatalogRecord, ToolTableEntry, ToolSet,
 )

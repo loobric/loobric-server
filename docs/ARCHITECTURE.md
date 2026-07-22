@@ -1,8 +1,8 @@
-# Smooth Core Architecture
+# Loobric Core Architecture
 
 ## Overview
 
-Smooth Core is a REST API and database for tool data synchronization. This document
+Loobric Core is a REST API and database for tool data synchronization. This document
 describes the system as it exists in the code. Planned capabilities live in
 [ROADMAP.md](../ROADMAP.md), not here.
 
@@ -29,7 +29,7 @@ describes the system as it exists in the code. Planned capabilities live in
 ### 3. Data Layer
 - **SQLAlchemy ORM** with **SQLite** as the supported database
 - **Schema creation** on startup via `create_all` (missing tables only), followed by
-  the **migration spine** (`smooth/migrations/`) which evolves existing tables — a small
+  the **migration spine** (`loobric_server/migrations/`) which evolves existing tables — a small
   in-repo, forward-only runner (no Alembic) with a `schema_migrations` ledger. See
   [MIGRATIONS.md](MIGRATIONS.md).
 - JSON columns for tool geometry, offsets, and metadata

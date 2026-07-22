@@ -29,7 +29,7 @@ def test_export_empty_database(db_session):
     - Contains metadata (version, timestamp, entity counts)
     - Empty arrays for each entity type
     """
-    from smooth.backup import export_backup
+    from loobric_server.backup import export_backup
     
     backup = export_backup(db_session)
     
@@ -63,8 +63,8 @@ def test_export_with_user_data(db_session):
     - Password hashes are included (for restore)
     - Datetime fields serialized as ISO strings
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     user = create_user(
         session=db_session,
@@ -94,9 +94,9 @@ def test_export_with_api_keys(db_session):
     - Includes scopes as JSON array
     - Preserves relationships (user_id)
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.backup import export_backup
     
     user = create_user(db_session, "test@example.com", "Password123")
     create_api_key(
@@ -124,8 +124,8 @@ def test_export_preserves_version_fields(db_session):
     - created_at, updated_at, version all included
     - Timestamps are ISO format strings
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -149,8 +149,8 @@ def test_backup_to_json_string(db_session):
     - Valid JSON format
     - Can be parsed back to dict
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup_json
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup_json
     
     create_user(db_session, "test@example.com", "Password123")
     
@@ -172,7 +172,7 @@ def test_restore_empty_backup(db_session):
     - Creates no entities
     - Returns success result
     """
-    from smooth.backup import restore_backup
+    from loobric_server.backup import restore_backup
     
     backup = {
         "metadata": {"version": "0.1.0", "timestamp": datetime.now(UTC).isoformat()},
@@ -198,8 +198,8 @@ def test_restore_user_data(db_session):
     - Preserves password hashes
     - Preserves timestamps and version
     """
-    from smooth.auth.user import create_user, get_user_by_email
-    from smooth.backup import export_backup, restore_backup
+    from loobric_server.auth.user import create_user, get_user_by_email
+    from loobric_server.backup import export_backup, restore_backup
     
     # Create user
     original_user = create_user(db_session, "test@example.com", "Password123")
@@ -210,7 +210,7 @@ def test_restore_user_data(db_session):
     backup = export_backup(db_session)
     
     # Clear database
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     db_session.query(User).delete()
     db_session.commit()
     
@@ -232,9 +232,9 @@ def test_restore_with_relationships(db_session):
     - Restores in correct order (users before api_keys)
     - Preserves relationships
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, list_user_api_keys
-    from smooth.backup import export_backup, restore_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, list_user_api_keys
+    from loobric_server.backup import export_backup, restore_backup
     
     # Create data with relationship
     user = create_user(db_session, "test@example.com", "Password123")
@@ -244,7 +244,7 @@ def test_restore_with_relationships(db_session):
     backup = export_backup(db_session)
     
     # Clear database (simplified for test - would need CASCADE)
-    from smooth.database.schema import ApiKey, User
+    from loobric_server.database.schema import ApiKey, User
     db_session.query(ApiKey).delete()
     db_session.query(User).delete()
     db_session.commit()
@@ -265,7 +265,7 @@ def test_restore_validation_rejects_invalid_version(db_session):
     - Checks version compatibility
     - Raises error for incompatible versions
     """
-    from smooth.backup import restore_backup, BackupVersionError
+    from loobric_server.backup import restore_backup, BackupVersionError
     
     backup = {
         "metadata": {"version": "99.0.0", "timestamp": datetime.now(UTC).isoformat()},
@@ -284,7 +284,7 @@ def test_restore_validation_rejects_missing_fields(db_session):
     - Validates entity structure
     - Raises error for missing required fields
     """
-    from smooth.backup import restore_backup, BackupValidationError
+    from loobric_server.backup import restore_backup, BackupValidationError
     
     backup = {
         "metadata": {"version": "0.1.0", "timestamp": datetime.now(UTC).isoformat()},
@@ -307,8 +307,8 @@ def test_restore_is_atomic(db_session):
     - If any entity fails, entire restore is rolled back
     - Database unchanged after failed restore
     """
-    from smooth.auth.user import create_user, get_user_by_email
-    from smooth.backup import restore_backup, BackupValidationError
+    from loobric_server.auth.user import create_user, get_user_by_email
+    from loobric_server.backup import restore_backup, BackupValidationError
     
     # Create initial user
     create_user(db_session, "existing@example.com", "Password123")
@@ -354,8 +354,8 @@ def test_backup_metadata_includes_counts(db_session):
     - Metadata includes count for each entity type
     - Useful for verification before restore
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     create_user(db_session, "user1@example.com", "Password123")
     create_user(db_session, "user2@example.com", "Password123")
@@ -374,8 +374,8 @@ def test_export_excludes_password_reset_tokens(db_session):
     - Password reset tokens are temporary, not backed up
     - Other temporary/session data excluded
     """
-    from smooth.auth.user import create_user, create_password_reset_token
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user, create_password_reset_token
+    from loobric_server.backup import export_backup
     
     user = create_user(db_session, "test@example.com", "Password123")
     create_password_reset_token(db_session, user.id)
@@ -396,8 +396,8 @@ def test_user_level_backup_only_includes_own_data(db_session):
     - Multi-tenant isolation enforced
     - User's own account included, but not other users
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     # Create two users
     user1 = create_user(db_session, "user1@example.com", "Password123")
@@ -420,8 +420,8 @@ def test_admin_backup_includes_all_users(db_session):
     - Admin users can backup entire database
     - admin=True parameter includes all data
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     # Create multiple users
     user1 = create_user(db_session, "user1@example.com", "Password123")
@@ -446,9 +446,9 @@ def test_user_backup_filters_tool_data_by_user(db_session):
     - Only entities owned by user are included
     - Enforces multi-tenant data isolation
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
-    from smooth.database.schema import ToolInstanceRecord
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
+    from loobric_server.database.schema import ToolInstanceRecord
 
     # Create two users
     user1 = create_user(db_session, "user1@example.com", "Password123")
@@ -490,9 +490,9 @@ def test_admin_backup_includes_all_tool_data(db_session):
     - Admin backup is not filtered by user_id
     - Includes all tool entities (v2 sectioned records) from all users
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
-    from smooth.database.schema import ToolInstanceRecord
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
+    from loobric_server.database.schema import ToolInstanceRecord
 
     # Create two users
     user1 = create_user(db_session, "user1@example.com", "Password123")
@@ -537,9 +537,9 @@ def test_user_backup_includes_own_api_keys_only(db_session):
     - API keys are user-specific
     - User backup includes their keys but not others'
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.backup import export_backup
     
     # Create two users with API keys
     user1 = create_user(db_session, "user1@example.com", "Password123")
@@ -566,8 +566,8 @@ def test_backup_metadata_indicates_backup_type(db_session):
     - Metadata includes 'user_id' for user backups
     - Helps identify backup scope when restoring
     """
-    from smooth.auth.user import create_user
-    from smooth.backup import export_backup
+    from loobric_server.auth.user import create_user
+    from loobric_server.backup import export_backup
     
     user = create_user(db_session, "test@example.com", "Password123")
     
@@ -588,8 +588,8 @@ def test_backup_metadata_indicates_backup_type(db_session):
 def test_export_stamps_schema_revision(db_session):
     """A backup records the schema revision it was taken on, so it is
     self-describing for restore-time compatibility checks."""
-    from smooth.backup import export_backup
-    from smooth.migrations import current_head
+    from loobric_server.backup import export_backup
+    from loobric_server.migrations import current_head
 
     backup = export_backup(db_session)
     assert backup["metadata"]["schema_revision"] == current_head()
@@ -599,7 +599,7 @@ def test_export_stamps_schema_revision(db_session):
 @pytest.mark.unit
 def test_restore_accepts_equal_revision(db_session):
     """Restoring a backup taken on the current schema revision is allowed."""
-    from smooth.backup import export_backup, restore_backup
+    from loobric_server.backup import export_backup, restore_backup
 
     backup = export_backup(db_session)
     result = restore_backup(db_session, backup)
@@ -610,7 +610,7 @@ def test_restore_accepts_equal_revision(db_session):
 def test_restore_accepts_older_revision(db_session):
     """An older backup restores into the current schema (newer columns take
     their model defaults)."""
-    from smooth.backup import export_backup, restore_backup
+    from loobric_server.backup import export_backup, restore_backup
 
     backup = export_backup(db_session)
     backup["metadata"]["schema_revision"] = "0000"
@@ -621,7 +621,7 @@ def test_restore_accepts_older_revision(db_session):
 @pytest.mark.unit
 def test_restore_accepts_backup_without_schema_revision(db_session):
     """Backups predating this field (no schema_revision) still restore."""
-    from smooth.backup import export_backup, restore_backup
+    from loobric_server.backup import export_backup, restore_backup
 
     backup = export_backup(db_session)
     del backup["metadata"]["schema_revision"]
@@ -633,7 +633,7 @@ def test_restore_accepts_backup_without_schema_revision(db_session):
 def test_restore_refuses_newer_revision(db_session):
     """Restoring a backup taken on a NEWER schema than this server understands
     is refused — it would be a downgrade and risk data loss."""
-    from smooth.backup import export_backup, restore_backup, BackupVersionError
+    from loobric_server.backup import export_backup, restore_backup, BackupVersionError
 
     backup = export_backup(db_session)
     backup["metadata"]["schema_revision"] = "9999"

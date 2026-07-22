@@ -19,8 +19,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
-from smooth.main import create_app
-from smooth.database.schema import Base
+from loobric_server.main import create_app
+from loobric_server.database.schema import Base
 
 
 @pytest.fixture
@@ -53,9 +53,9 @@ def client(db_session, request):
     - Overrides get_db dependency to use shared session
     - Auth disabled if test uses disable_auth fixture
     """
-    from smooth.main import create_app
-    from smooth.api.auth import get_db
-    from smooth.config import settings
+    from loobric_server.main import create_app
+    from loobric_server.api.auth import get_db
+    from loobric_server.config import settings
     
     # Store original auth_enabled value
     original_auth_enabled = settings.auth_enabled
@@ -143,7 +143,7 @@ def db_with_sample_data(db_session):
     - Includes single user with tool items
     - Useful for integration tests
     """
-    from smooth.backup import restore_backup
+    from loobric_server.backup import restore_backup
     from tests.fixtures.sample_data import create_single_user_backup
     
     backup = create_single_user_backup()
@@ -175,8 +175,8 @@ def admin_headers(client, db_session):
     Returns:
         dict: Headers with session cookie for admin user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     # Create admin user
     admin = create_user(db_session, "admin@example.com", "AdminPass123")
@@ -195,8 +195,8 @@ def user_headers(client, db_session):
     Returns:
         dict: Headers with session cookie for regular user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     # Create regular user (ensure it's not admin)
     user = create_user(db_session, "user@example.com", "UserPass123")
@@ -217,8 +217,8 @@ def manufacturer_headers(client, db_session):
     Returns:
         dict: Headers with session cookie for manufacturer user
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     # Create manufacturer user
     manufacturer = create_user(db_session, "manufacturer@example.com", "MfgPass123")
@@ -248,7 +248,7 @@ def db_session():
     - Session is closed after test
     """
     from sqlalchemy.pool import StaticPool
-    from smooth.database.schema import init_db
+    from loobric_server.database.schema import init_db
     
     # Create an in-memory SQLite database
     engine = create_engine(

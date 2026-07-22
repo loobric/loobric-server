@@ -1,8 +1,8 @@
-# Smooth v2 Research Brief
+# Loobric v2 Research Brief
 
 **Date:** 2026-06-09
 **Status:** Reviewed and grilled 2026-06-09. All decisions **accepted** (D13 as amended). Grill resolutions in §6. Execution plan: `REIMPLEMENTATION_PLAN.md`.
-**Premise:** The current implementation (smooth-core, smooth-freecad, smooth-linuxcnc) is treated as a **proof of concept**. This brief summarizes what the PoC, competitive research, and the FreeCAD Feeds & Speeds work (PR #30078 / discussion #30422) teach us, and converts those findings into explicit decisions.
+**Premise:** The current implementation (loobric-server, loobric-freecad, loobric-linuxcnc) is treated as a **proof of concept**. This brief summarizes what the PoC, competitive research, and the FreeCAD Feeds & Speeds work (PR #30078 / discussion #30422) teach us, and converts those findings into explicit decisions.
 
 **How to read this:** every section ends in a numbered **Decision** with a recommendation. The decision register at the end (§5) is the grill-me agenda. Annotate disagreements inline.
 
@@ -12,7 +12,7 @@
 
 ### 1.1 What actually works
 
-A code audit (June 2026) found smooth-core to be a real, working system, not vaporware:
+A code audit (June 2026) found loobric-server to be a real, working system, not vaporware:
 
 - **Bulk-first REST API** across all six entities, with partial-success semantics, pagination, tag filtering.
 - **Auth done properly**: session + API keys, tag-scoped keys (a key can be locked to entities tagged `mill01`), multi-tenant isolation by default, immutable audit log.
@@ -25,13 +25,13 @@ A code audit (June 2026) found smooth-core to be a real, working system, not vap
 
 | Finding | Evidence | Lesson for v2 |
 |---|---|---|
-| **The two clients form disconnected silos.** FreeCAD writes ToolItems; LinuxCNC writes ToolPresets with `instance_id: null`. Nothing links them. The founding use case — CAM↔controller sync — never closes the loop. | `smooth-linuxcnc/parse_tooltable.py`; `smooth-freecad/fctb_parser.py` | Identity resolution (binding a controller's T3 to the CAM tool) is **the product**, and it must be a *server* responsibility. Clients are too thin to do it. |
+| **The two clients form disconnected silos.** FreeCAD writes ToolItems; LinuxCNC writes ToolPresets with `instance_id: null`. Nothing links them. The founding use case — CAM↔controller sync — never closes the loop. | `loobric-linuxcnc/parse_tooltable.py`; `loobric-freecad/fctb_parser.py` | Identity resolution (binding a controller's T3 to the CAM tool) is **the product**, and it must be a *server* responsibility. Clients are too thin to do it. |
 | **Both clients bypass most of the domain model.** FreeCAD uses only ToolItem (no Assembly/Instance, despite schema requiring `assembly_id` on Instance). LinuxCNC uses only ToolPreset. | same | The 4-entity surface is the wrong *contract* for clients, even if it's the right *schema*. v2 needs a collapsed facade (§1.4). |
-| **FreeCAD round-trip is broken**: shape upload calls a nonexistent endpoint; `.fctl` libraries map to nothing; holder/assembly data lost. | `fctb_parser.py`, `SmoothDialog.py` | Round-trip fidelity is a correctness requirement, not a feature. Every import must export back losslessly or users can't trust the hub. |
+| **FreeCAD round-trip is broken**: shape upload calls a nonexistent endpoint; `.fctl` libraries map to nothing; holder/assembly data lost. | `fctb_parser.py`, `LoobricDialog.py` | Round-trip fidelity is a correctness requirement, not a feature. Every import must export back losslessly or users can't trust the hub. |
 | **Conflict handling is last-write-wins**; the LinuxCNC script silently overwrites `tool.tbl`. | `sync_tooltable.sh` | For a product whose pitch is "stop crashing spindles on stale offsets," silent clobbering is self-refuting. Divergence must be surfaced, not resolved silently. |
 | **Setup friction: 12 steps, ~20 min, 7 of them server admin**, incl. an API key shown once and never again. | `docs/QUICK_START.md` | A solo hobbyist must never see "multi-tenant." Need a zero-config solo mode. |
 | **No web UI at all.** Users cannot see their data without curl. | — | Even a read-only browser is a trust requirement. |
-| **Claims vs code**: ISO 13399 is a string field; STEP-NC/MTConnect/CSV/XML export, rate limiting, plugin system — all docs-only. | `README.md` vs `smooth/api/` | v2 docs claim only what runs. Credibility with this audience is one-strike. |
+| **Claims vs code**: ISO 13399 is a string field; STEP-NC/MTConnect/CSV/XML export, rate limiting, plugin system — all docs-only. | `README.md` vs `loobric_server/api/` | v2 docs claim only what runs. Credibility with this audience is one-strike. |
 | **ToolUsage/analytics are write-only** — schema exists, nothing consumes it. | `audit findings` | Don't build storage for data with no consumer. Build the consumer first or cut it. |
 
 ### 1.3 Keep / Salvage / Discard
@@ -46,12 +46,12 @@ A code audit (June 2026) found smooth-core to be a real, working system, not vap
 | Backup/restore, ToolSet history/rollback | **Keep** | The "your data is safe and yours" story. |
 | 4-entity deep schema (Item/Assembly/Instance/Preset) | **Salvage** | Right ontology, wrong contract. Keep internally; hide behind a facade (§1.4). |
 | Client API contract (entities exposed raw) | **Discard** | Both reference clients refused it. |
-| smooth-freecad mapping layer | **Discard/rewrite** | Broken round-trip; pre-dates FreeCAD F&S presets and Machine work. |
-| smooth-linuxcnc scripts | **Salvage** | `.tbl` parser is fine; orchestration needs conflict surfacing + binding. |
+| loobric-freecad mapping layer | **Discard/rewrite** | Broken round-trip; pre-dates FreeCAD F&S presets and Machine work. |
+| loobric-linuxcnc scripts | **Salvage** | `.tbl` parser is fine; orchestration needs conflict surfacing + binding. |
 | ManufacturerCatalog feature | **Park** | Right idea, wrong sequence — see D8. Manufacturers won't come to an empty platform. |
 | ToolUsage entity | **Park** | No consumer yet. Reintroduce with the cutting-parameter layer (D11). |
 | Marketing site pricing page | **Discard for now** | See D9. |
-| smooth-web (v1 web app) | **Discard as deployed app; rebuild in M3** | *(Added 2026-06-10 — this row was missing; the repo wasn't in the workspace.)* Full deep-API consumer: its writes create pre-facade data (dead-model ToolPresets, name-less ToolItems) that poisons v2. Retired and archived; app.loobric.com removed. Its account/key/backup/admin functionality becomes M3 Smooth Web scope (see smooth-core#12). Until then: CLI-only. |
+| loobric-web (v1 web app) | **Discard as deployed app; rebuild in M3** | *(Added 2026-06-10 — this row was missing; the repo wasn't in the workspace.)* Full deep-API consumer: its writes create pre-facade data (dead-model ToolPresets, name-less ToolItems) that poisons v2. Retired and archived; app.loobric.com removed. Its account/key/backup/admin functionality becomes M3 Loobric Web scope (see loobric-server#12). Until then: CLI-only. |
 
 ### 1.4 Domain model: correct ontology, wrong altitude
 
@@ -104,14 +104,14 @@ Research findings (full report available):
 
 ### 2.4 License
 
-- smooth-core is **Elastic 2.0** — source-available, not OSI open source. Marketing currently says "open source." First audience is GPL-native (FreeCAD LGPL, LinuxCNC GPL); the Elastic relicensing backlash is living memory in exactly this community.
-- The fear ELv2 addresses (cloud vendor resells Smooth-as-a-service) is equally addressed by **AGPL + commercial license** — the Grafana model; Carbon (open-source MES) chose it in manufacturing.
+- loobric-server is **Elastic 2.0** — source-available, not OSI open source. Marketing currently says "open source." First audience is GPL-native (FreeCAD LGPL, LinuxCNC GPL); the Elastic relicensing backlash is living memory in exactly this community.
+- The fear ELv2 addresses (cloud vendor resells Loobric-as-a-service) is equally addressed by **AGPL + commercial license** — the Grafana model; Carbon (open-source MES) chose it in manufacturing.
 
 > **Decision D9 — relicense before v2 ships.** *Recommendation:* AGPL-3.0 core + commercial licensing for the hosted/enterprise offering; clients stay MIT. Relicensing is nearly free now (single copyright holder, no external contributions of substance) and impossible-ish later. At minimum, stop saying "open source core" while ELv2. Secondary: pull the pricing page (alpha product + $299/mo tier reads as fiction; the $15→$299 gap has nobody in it; small shops will anchor against CoroPlus at ~€200/yr, not Zoller). Reintroduce pricing with the hosted product, Professional in the $49–99/mo band.
 
 ### 2.5 Identity
 
-> **Decision D10 — infrastructure first, business later.** *Recommendation:* optimize v2 for becoming the canonical tool-data backend for FreeCAD CAM + LinuxCNC (achievable: you maintain FreeCAD CAM; LinuxCNC's new tool-database interface is the exact hook). Revenue path (hosted Smooth Web, small-shop tier, Fusion client) follows adoption. The durable user asset — and the moat no vendor-aligned platform can copy — is **what actually worked**: measured offsets and per-material/per-machine cutting parameters (D11), shareable as community libraries.
+> **Decision D10 — infrastructure first, business later.** *Recommendation:* optimize v2 for becoming the canonical tool-data backend for FreeCAD CAM + LinuxCNC (achievable: you maintain FreeCAD CAM; LinuxCNC's new tool-database interface is the exact hook). Revenue path (hosted Loobric Web, small-shop tier, Fusion client) follows adoption. The durable user asset — and the moat no vendor-aligned platform can copy — is **what actually worked**: measured offsets and per-material/per-machine cutting parameters (D11), shareable as community libraries.
 
 ---
 
@@ -130,26 +130,26 @@ Research findings (full report available):
 
 ### 3.2 Ownership split
 
-FreeCAD is acquiring native Presets, Machine definitions, and resolution logic — territory Smooth's PoC also claimed. The architectures are *complementary, not competing*, if the split is explicit:
+FreeCAD is acquiring native Presets, Machine definitions, and resolution logic — territory Loobric's PoC also claimed. The architectures are *complementary, not competing*, if the split is explicit:
 
-> **Decision D12 — FreeCAD resolves; Smooth stores and syncs.** *Recommendation:* FreeCAD owns live resolution (providers, confidence, correctors, UI). Smooth owns **durable storage, cross-installation sync, and community sharing** of the same records: presets, machine definitions, bindings, offsets. Two concrete integrations: (a) since presets live in `.fctb`, a *correct* `.fctb` round-trip syncs presets **for free** — no new FreeCAD-side work; (b) phase 2, a `SmoothProvider` registered in the resolver chain serves shared/community presets live, with provenance `"smooth:<library>/<preset>"`. The provider extension point was designed for exactly this shape of thing.
+> **Decision D12 — FreeCAD resolves; Loobric stores and syncs.** *Recommendation:* FreeCAD owns live resolution (providers, confidence, correctors, UI). Loobric owns **durable storage, cross-installation sync, and community sharing** of the same records: presets, machine definitions, bindings, offsets. Two concrete integrations: (a) since presets live in `.fctb`, a *correct* `.fctb` round-trip syncs presets **for free** — no new FreeCAD-side work; (b) phase 2, a `LoobricProvider` registered in the resolver chain serves shared/community presets live, with provenance `"loobric:<library>/<preset>"`. The provider extension point was designed for exactly this shape of thing.
 
 ### 3.3 Schema alignment
 
-> **Decision D11 — adopt FreeCAD's preset schema as Smooth's cutting-parameter record.** *Recommendation:* Smooth's cutting-parameter layer stores exactly FreeCAD's engineering-value schema: `{surface_speed, chipload, vert_feed_ratio?, material_uuid?, material_name?, op_type?}` scoped to (tool, machine?). Never store raw feed/rpm (FreeCAD's dev guide lists this under "what not to do," for the right reason: incoherent under geometry edits). Adopt OP_TYPES as-is. Adopt material-UUID-with-name-fallback, and define the UUID mapping story for non-FreeCAD clients (Vectric importer maps material names → UUIDs where possible, keeps names otherwise). **Sync must respect provenance**: a `"user"`-provenance value on one installation must not be silently replaced by a synced suggestion.
+> **Decision D11 — adopt FreeCAD's preset schema as Loobric's cutting-parameter record.** *Recommendation:* Loobric's cutting-parameter layer stores exactly FreeCAD's engineering-value schema: `{surface_speed, chipload, vert_feed_ratio?, material_uuid?, material_name?, op_type?}` scoped to (tool, machine?). Never store raw feed/rpm (FreeCAD's dev guide lists this under "what not to do," for the right reason: incoherent under geometry edits). Adopt OP_TYPES as-is. Adopt material-UUID-with-name-fallback, and define the UUID mapping story for non-FreeCAD clients (Vectric importer maps material names → UUIDs where possible, keeps names otherwise). **Sync must respect provenance**: a `"user"`-provenance value on one installation must not be silently replaced by a synced suggestion.
 
 ### 3.4 Naming collisions (must resolve before v2 — these will live in support forums forever)
 
-| Term | FreeCAD ADR-000 meaning | Smooth PoC meaning | Resolution (recommendation) |
+| Term | FreeCAD ADR-000 meaning | Loobric PoC meaning | Resolution (recommendation) |
 |---|---|---|---|
-| **Preset** | Named F&S record on a Tool Bit (Vc/Fz per material/op) | Machine-specific tool-table entry (tool #, pocket, offsets) | **FreeCAD wins** — it's upstream and shipping. Smooth renames `ToolPreset` → **`MachineToolEntry`** (or `ToolSlot`); Smooth's cutting-parameter records (D11) are called **Presets**, matching FreeCAD exactly. |
-| **Tool Library** | Persisted collection of Tool Bits, shared across jobs | (no entity; PoC `ToolSet` ≈ collection of instances/presets) | Map FreeCAD Tool Library ↔ Smooth **ToolSet**, and consider renaming ToolSet → **Library** in the facade vocabulary. `.fctl` ↔ ToolSet is mandatory either way. |
-| **Machine** | `.fcm` definition: axes, limits, spindle, post settings | free-string `machine_id` | Smooth Machine entity (D4) syncs `.fcm` content; same word, compatible meaning. |
-| **Tool** (bare) | Forbidden — always qualify | Forbidden (UL file) | Aligned. But Smooth's facade (D2) wants the name `Tool`. Acceptable: facade-`Tool` is an API resource name, not prose; document the equivalence Tool ≈ FreeCAD Tool Bit + assignments. Grill this. |
-| **Tool assembly** | *Explicitly avoided* in CAM-workbench prose (means TC confusion) | Core entity (holder + cutter) | Keep `ToolAssembly` in Smooth's deep schema (industrially correct; FreeCAD's avoidance is workbench-local), but it never appears in the facade or hobbyist docs. |
+| **Preset** | Named F&S record on a Tool Bit (Vc/Fz per material/op) | Machine-specific tool-table entry (tool #, pocket, offsets) | **FreeCAD wins** — it's upstream and shipping. Loobric renames `ToolPreset` → **`MachineToolEntry`** (or `ToolSlot`); Loobric's cutting-parameter records (D11) are called **Presets**, matching FreeCAD exactly. |
+| **Tool Library** | Persisted collection of Tool Bits, shared across jobs | (no entity; PoC `ToolSet` ≈ collection of instances/presets) | Map FreeCAD Tool Library ↔ Loobric **ToolSet**, and consider renaming ToolSet → **Library** in the facade vocabulary. `.fctl` ↔ ToolSet is mandatory either way. |
+| **Machine** | `.fcm` definition: axes, limits, spindle, post settings | free-string `machine_id` | Loobric Machine entity (D4) syncs `.fcm` content; same word, compatible meaning. |
+| **Tool** (bare) | Forbidden — always qualify | Forbidden (UL file) | Aligned. But Loobric's facade (D2) wants the name `Tool`. Acceptable: facade-`Tool` is an API resource name, not prose; document the equivalence Tool ≈ FreeCAD Tool Bit + assignments. Grill this. |
+| **Tool assembly** | *Explicitly avoided* in CAM-workbench prose (means TC confusion) | Core entity (holder + cutter) | Keep `ToolAssembly` in Loobric's deep schema (industrially correct; FreeCAD's avoidance is workbench-local), but it never appears in the facade or hobbyist docs. |
 | **Provenance** | Per-field source string on TC | (audit log exists, different grain) | Adopt FreeCAD's term and semantics for synced F&S fields (D11). |
 
-Smooth's `docs/UBIQUITOUS_LANGUAGE.md` has been updated with these as proposed resolutions.
+Loobric's `docs/UBIQUITOUS_LANGUAGE.md` has been updated with these as proposed resolutions.
 
 ---
 
@@ -157,10 +157,10 @@ Smooth's `docs/UBIQUITOUS_LANGUAGE.md` has been updated with these as proposed r
 
 Tracer-bullet order — each milestone is a working end-to-end slice:
 
-1. **The loop** (D3, D4, D6): facade + binding + LinuxCNC/FreeCAD round-trip → wear-offset demo works. Solo mode (`pipx install smooth && smooth serve`, no auth ceremony) + minimal read-only web viewer.
+1. **The loop** (D3, D4, D6): facade + binding + LinuxCNC/FreeCAD round-trip → wear-offset demo works. Solo mode (`pipx install loobric-server && loobric-server serve`, no auth ceremony) + minimal read-only web viewer.
 2. **Cold start** (D8): Vectric + Fusion `.tools` importers (with F&S), Carbide CSV; lossless export of everything.
 3. **The compounding asset** (D11, D12): Preset records synced via `.fctb`; per-material/machine parameters; community library sharing.
-4. **Small-shop phase** (D7, parked items): GTC/P21 importer, ManufacturerCatalog revival, SmoothProvider in FreeCAD's chain, hosted offering + pricing.
+4. **Small-shop phase** (D7, parked items): GTC/P21 importer, ManufacturerCatalog revival, LoobricProvider in FreeCAD's chain, hosted offering + pricing.
 
 ---
 
@@ -179,7 +179,7 @@ Tracer-bullet order — each milestone is a working end-to-end slice:
 | D9 | License & pricing posture | AGPL + commercial; clients MIT; pull pricing page | Accepted |
 | D10 | Identity: infrastructure first | Accept | Accepted |
 | D11 | Adopt FreeCAD preset schema (engineering values, UUID materials, OP_TYPES, provenance) | Accept verbatim | Accepted |
-| D12 | FreeCAD resolves / Smooth stores+syncs; `.fctb` carries presets; SmoothProvider phase 2 | Accept | Accepted |
+| D12 | FreeCAD resolves / Loobric stores+syncs; `.fctb` carries presets; LoobricProvider phase 2 | Accept | Accepted |
 | D13 | Naming: Preset→FreeCAD's meaning; ToolPreset→MachineToolEntry; ToolSet↔Library; facade named `Tool` | Proposed in §3.4 — most contestable; grill hard | Accepted |
 | D14 | **Tool-number verification** (2026-06-11, from CONCEPTS.md): the tool number is the only identifier in G-code; verifying CAM's number→tool assumption against the machine's bindings is the system's most important job. Both halves are recorded today, but (a) CAM-side numbers ride in opaque client `extra` — should they be a first-class facade field so core can compare? (b) an automated mismatch alarm (Inbox item when a CAM library's numbering disagrees with a machine's confirmed bindings) is designed but unimplemented. | Decide field promotion + alarm before M2 | **Open** |
 | D15 | **Physical-instance identity from controllers** (2026-06-12): modern controllers may store a barcode/serial naming the *specific physical tool* (plus dynamic-pocket maps, life counters). Storage is solved — entries key on `(machine, tool_number)`, `pocket` is a mutable attribute, everything else round-trips losslessly in client-namespaced `extra`. But a barcode is *identity*, which makes such a controller identity-carrying: binding could be deterministic (barcode → registered instance) instead of human-confirmed. The deep schema already has `ToolInstance.serial_number` (unmounted, v1); the v2 facade has no physical-instance concept. Same shape as D14: which fields must core *understand* vs merely *preserve*? | Decide whether/when facade grows instance identity; bundle with D14 | **Open** |
@@ -196,8 +196,8 @@ Nine questions, all branches closed:
 | G2 | Headless binding/conflict UX | **Pending review is first-class server state.** Sync never prompts, blocks, or guesses: unbound tools sync as unbound; conflicting fields freeze. Milestone-1 web UI is an **inbox with exactly two write actions** (confirm binding, pick conflict winner) + CLI `pending`/`resolve`. |
 | G3 | API surface | **Facade-only public API.** Deep entities (ToolItem/Assembly/Instance) are private substrate, no compat promise. Facade gaps get fixed, never bypassed. Facade IDs stable for record life. |
 | G4 | Naming (D13 amended) | Facade resource = **`ToolRecord`** (user's improvement — keeps an unambiguous term available without a register rule). Per-machine row = **`ToolTableEntry`**, nested as `ToolRecord.machines[]`. Rejected: `MachineToolInstance` (collides with ToolInstance), `ToolPocket` (field-as-whole + Pocket op collision), bare `Tool`. **Amended 2026-06-11:** the facade word **Library** is purged in favor of **`ToolSet`** — "library" is FreeCAD's term, and the public resource now shares the internal entity's name (`/api/v1/tool-sets`). New language rule: core vocabulary, docs, and UI are client-application agnostic; application names (FreeCAD, LinuxCNC, …) appear only when referring to that application's own artifact or term. |
-| G5 | FreeCAD PR #30078 coupling | Preset schema is **Smooth's own, version-stamped** (`preset_schema: 1`), convergently identical to the PR. Invariants (engineering values only, UUID materials, user-wins provenance, OP_TYPES) adopted as Smooth principles independent of the PR's fate. Presets land in milestone 3; `.fctb` parser is the only coupling point. Not gated on merge. |
-| G6 | License mechanics | **Relicense smooth-core to AGPL-3.0 before any launch publicity** (verified: 22/22 commits are sliptonic's — relicense is free). **Asymmetric contribution policy:** CLA on smooth-core, DCO-only on MIT clients/importers (Grafana precedent). |
+| G5 | FreeCAD PR #30078 coupling | Preset schema is **Loobric's own, version-stamped** (`preset_schema: 1`), convergently identical to the PR. Invariants (engineering values only, UUID materials, user-wins provenance, OP_TYPES) adopted as Loobric principles independent of the PR's fate. Presets land in milestone 3; `.fctb` parser is the only coupling point. Not gated on merge. |
+| G6 | License mechanics | **Relicense loobric-server to AGPL-3.0 before any launch publicity** (verified: 22/22 commits are sliptonic's — relicense is free). **Asymmetric contribution policy:** CLA on loobric-server, DCO-only on MIT clients/importers (Grafana precedent). |
 | G7 | Hosted at launch | **Both:** public sandbox (demo creds, seeded, wiped nightly, no signup) **and** invite-gated hosted for serious early adopters (explicit no-SLA terms, export-anytime, pre-set account cap, same Docker image as self-host). Open signup deferred to commercial milestone. |
 | G8 | Rewrite mechanics | **Existing repos, on `main`**, delete-and-port aggressively; PoC lives in git history. Public API ships as `/api/v1` (no outsider ever adopted the old contract; API free to change until first stable release). Stack unchanged (Python/FastAPI/SQLite). |
 | G9 | Milestone-1 definition of done | The acceptance script passes in **Env A** (fresh Docker on NAS-class box + Addon Manager FreeCAD addon + LinuxCNC sim on stock Debian, < 30 min from `docker run` to closed loop) and **Env B** (real machine, recorded — **the demo video is the launch artifact**; the community post ships rewritten around it). CI runs the e2e against real `.tbl` files + live server; full sim run is a release-checklist item. |
@@ -206,7 +206,7 @@ Nine questions, all branches closed:
 
 ## Appendix: sources
 
-- **Implementation audit** (June 2026): file-level findings cited inline in §1; repos `smooth-core`, `smooth-freecad`, `smooth-linuxcnc`.
+- **Implementation audit** (June 2026): file-level findings cited inline in §1; repos `loobric-server`, `loobric-freecad`, `loobric-linuxcnc`.
 - **Competitive research**: Zoller ([zoller.info](https://www.zoller.info/us/products/tool-management/tms-tool-management-solutions/software-packages)), TDM ([tdmsystems.com](https://www.tdmsystems.com/en/)), WinTool, CoroPlus pricing ([softwarefinder.com](https://softwarefinder.com/manufacturing-software/coroplus-tool-library)), MachiningCloud ([machiningcloud.com](https://www.machiningcloud.com/)), Sandvik/Mastercam acquisition ([home.sandvik](https://www.home.sandvik/en/news-and-media/news/2021/08/sandvik-to-acquire-leading-cam-software-company-cnc-software-inc.-creators-of-mastercam)), Hexagon cloud tooling (2025 PR), Practical Machinist Zoller-TMS thread, market sizing (Growth Market Reports — directional only).
 - **Data availability research**: GTC spec ([gtc-tools.com](https://gtc-tools.com/)), Sandvik tool-data downloads, Iscar E-CAT, Gühring digital services, Mitsubishi ISO 13399 property pages, Fusion P21 import ([help.autodesk.com](https://help.autodesk.com/cloudhelp/ENU/Fusion-CAM/files/MFG-TOOL-LIBRARY-IMPORT.htm)), `Tool.createFromP21`, Vectric `.vtdb` SQLite format (Vectric forum), Amana/Whiteside/SpeTool/IDC free libraries, BTL formats ([github.com/knipknap/better-tool-library](https://github.com/knipknap/better-tool-library/blob/main/docs/formats.md)), licensing analysis (ELv2: COSS Community, Goodwin; Carbon AGPL precedent).
 - **FreeCAD F&S**: [PR #30078](https://github.com/FreeCAD/FreeCAD/pull/30078) (4 commits, 17 files, +2732/−33, updated 2026-05-26), [discussion #30422](https://github.com/FreeCAD/FreeCAD/discussions/30422) "Feeds and Speeds Developer Guide", ADR-000 (branch `sliptonic/FreeCAD@FSImp`, `src/Mod/CAM/Roadmap/ADR/ADR-000.md`).

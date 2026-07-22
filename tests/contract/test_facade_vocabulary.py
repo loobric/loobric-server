@@ -97,7 +97,7 @@ def test_facade_resources_are_published(solo_client):
     assert not missing, "facade resource missing from the published schema: %s" % missing
 
 
-BUNDLED_CLIENTS = ("smooth/web/static/index.html",)
+BUNDLED_CLIENTS = ("loobric_server/web/static/index.html",)
 
 
 @pytest.mark.contract

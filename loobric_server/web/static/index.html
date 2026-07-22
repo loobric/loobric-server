@@ -1,0 +1,1102 @@
+<!DOCTYPE html>
+<!--
+  Loobric web inbox (loobric-server#6).
+  Deliberately one static file: no build step, no dependencies, served by
+  the core container. Scope (decision G2 + field feedback): read views for
+  tools/machines/audit, plus housekeeping write actions — confirm/reject,
+  bind/unbind, create-record, and delete of records/machines/entries.
+  Anything richer belongs to Loobric Web (commercial).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loobric</title>
+<style>
+  :root { --bg:#10151a; --card:#1a222b; --ink:#e8edf2; --dim:#8fa1b3;
+          --line:#2a3641; --ok:#3fb46a; --warn:#d9923b; --bad:#cf5b56; --link:#5ab3d6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.45 system-ui,-apple-system,sans-serif; }
+  header { display:flex; align-items:center; gap:.75rem; padding:.7rem 1rem;
+           background:var(--card); border-bottom:1px solid var(--line);
+           position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  header h1 { font-size:1.1rem; margin:0 .5rem 0 0; }
+  nav { display:flex; gap:.25rem; flex-wrap:wrap; }
+  nav button { background:none; border:1px solid transparent; color:var(--dim);
+               padding:.5rem .8rem; border-radius:8px; font-size:.95rem; cursor:pointer; }
+  nav button.active { color:var(--ink); border-color:var(--line); background:var(--bg); }
+  nav button .n { background:var(--warn); color:#000; border-radius:9px;
+                  padding:0 .45em; font-size:.8em; margin-left:.3em; }
+  main { max-width:760px; margin:0 auto; padding:1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:.9rem 1rem; margin-bottom:.8rem; }
+  .muted { color:var(--dim); font-size:.9rem; }
+  .row { display:flex; justify-content:space-between; gap:.6rem; align-items:baseline; flex-wrap:wrap; }
+  .id { font-family:ui-monospace,monospace; font-size:.8rem; color:var(--dim); }
+  .id.link { color:var(--link); cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+  .id.link:hover { color:var(--ink); text-decoration-style:solid; }
+  .vs { text-align:center; color:var(--dim); margin:.4rem 0; font-size:.9rem; }
+  .conf { height:6px; background:var(--line); border-radius:3px; margin:.6rem 0 .3rem; }
+  .conf > div { height:100%; border-radius:3px; background:var(--warn); }
+  .actions { display:flex; gap:.6rem; margin-top:.7rem; }
+  .actions button { flex:1; min-height:46px; border:none; border-radius:10px;
+                    font-size:1rem; font-weight:600; cursor:pointer; }
+  .confirm { background:var(--ok); color:#06210f; }
+  .reject  { background:var(--bad); color:#2b0c0a; }
+  .unbind  { background:none; border:1px solid var(--bad) !important; color:var(--bad);
+             min-height:36px !important; font-weight:500 !important; flex:0 0 auto !important;
+             padding:0 .8rem; }
+  .trow { display:flex; justify-content:space-between; gap:.6rem; align-items:center;
+          flex-wrap:wrap; padding:.5rem 0; border-top:1px solid var(--line); }
+  .trow:first-of-type { border-top:none; }
+  .tinfo { display:flex; gap:.5rem; align-items:baseline; flex-wrap:wrap; min-width:0; }
+  .tnum { font-weight:600; }
+  .rowact { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+  .rowact button { min-height:34px; border:none; border-radius:8px; padding:0 .7rem;
+                   font-size:.85rem; font-weight:600; cursor:pointer; }
+  button.mini.confirm { background:var(--ok); color:#06210f; }
+  button.mini.reject  { background:var(--bad); color:#2b0c0a; }
+  button.mini.link    { background:none; border:1px solid var(--link); color:var(--link); }
+  button.mini.create  { background:none; border:1px solid var(--ok); color:var(--ok); }
+  button.mini.del     { background:none; border:1px solid var(--bad); color:var(--bad); }
+  .suggest { font-size:.82rem; margin-right:.2rem; }
+  .picker { background:var(--bg); border:1px solid var(--line); color:var(--ink);
+            border-radius:8px; padding:.4rem; font-size:.85rem; max-width:50vw; }
+  .explain { background:#15202b; border:1px solid var(--line); border-radius:12px;
+             padding:.8rem 1rem; margin-bottom:1rem; font-size:.92rem; color:var(--dim); }
+  .explain b { color:var(--ink); }
+  .empty { text-align:center; color:var(--dim); padding:3rem 1rem; }
+  .pill { font-size:.78rem; padding:.1em .55em; border-radius:9px; border:1px solid var(--line); }
+  .pill.bound { color:var(--ok); border-color:var(--ok); }
+  .pill.unbound { color:var(--dim); }
+  .pill.dupe { color:var(--warn); border-color:var(--warn); }
+  .pill.ok   { color:var(--ok); border-color:var(--ok); }
+  .pill.warn { color:var(--warn); border-color:var(--warn); }
+  .pill.bad  { color:var(--bad); border-color:var(--bad); }
+  .pill.info { color:var(--link); border-color:var(--link); }
+  /* provenance badges (catalog drift detector): a claim must READ differently
+     from a measurement, and an honest gap from either. */
+  .prov { font-size:.72rem; font-family:ui-monospace,monospace; padding:.1em .55em;
+          border-radius:9px; border:1px solid var(--line); white-space:nowrap; }
+  .prov.asserted { color:var(--warn); border-color:var(--warn); }
+  .prov.observed { color:var(--ok);   border-color:var(--ok); }
+  .prov.derived  { color:var(--link); border-color:var(--link); }
+  .prov.unknown  { color:var(--dim);  border-style:dashed; }
+  .frow { display:flex; justify-content:space-between; gap:.6rem; align-items:center;
+          flex-wrap:wrap; padding:.45rem 0; border-top:1px solid var(--line); }
+  .frow:first-of-type { border-top:none; }
+  .flabel { color:var(--dim); flex:0 0 9rem; }
+  .fval { flex:1; min-width:6rem; font-weight:600; }
+  .unknownval { color:var(--dim); font-style:italic; font-weight:400; }
+  .section-h { font-size:.82rem; color:var(--dim); text-transform:uppercase;
+               letter-spacing:.05em; margin:1rem 0 .1rem; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  td, th { text-align:left; padding:.35rem .4rem; border-top:1px solid var(--line); }
+  th { color:var(--dim); font-weight:500; border-top:none; }
+  #login { position:fixed; inset:0; background:var(--bg); display:none;
+           align-items:center; justify-content:center; z-index:10; }
+  #login form { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                padding:1.5rem; width:min(92vw,340px); display:flex; flex-direction:column; gap:.7rem; }
+  #login input { background:var(--bg); border:1px solid var(--line); color:var(--ink);
+                 border-radius:8px; padding:.7rem; font-size:1rem; }
+  #login button { min-height:46px; border:none; border-radius:10px; background:var(--link);
+                  color:#06212b; font-size:1rem; font-weight:600; cursor:pointer; }
+  #login .err { color:var(--bad); font-size:.9rem; min-height:1.2em; }
+  #toast { position:fixed; bottom:1rem; left:50%; transform:translateX(-50%);
+           background:var(--card); border:1px solid var(--line); border-radius:10px;
+           padding:.6rem 1rem; opacity:0; transition:opacity .25s; max-width:92vw; }
+  .spacer { flex:1; }
+  #whoami { font-size:.8rem; }
+  .link-ish { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+  #detail { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+            align-items:center; justify-content:center; z-index:9; padding:1rem; }
+  #detail .sheet { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                   padding:1rem; width:min(96vw,720px); max-height:86vh; display:flex; flex-direction:column; }
+  #detail pre { overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:8px;
+                padding:.7rem; font-size:.78rem; line-height:1.4; margin:.6rem 0 0;
+                white-space:pre-wrap; word-break:break-word; }
+  #ask { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+         align-items:center; justify-content:center; z-index:11; padding:1rem; }
+  #ask .sheet { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                padding:1.1rem; width:min(94vw,420px); }
+  #ask #askmsg { font-size:.95rem; }
+  #ask input { width:100%; margin-top:.7rem; background:var(--bg); border:1px solid var(--line);
+               color:var(--ink); border-radius:8px; padding:.6rem; font-size:1rem; }
+  #ask .arow { display:flex; justify-content:flex-end; gap:.5rem; margin-top:.9rem; }
+  /* Create-tool-from-catalog form: a separate overlay (not rebuilt by render(),
+     so the 15s auto-refresh can't wipe a half-typed name). */
+  #ccreate { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+             align-items:center; justify-content:center; z-index:11; padding:1rem; }
+  #ccreate .sheet { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                    padding:1.1rem; width:min(96vw,520px); max-height:86vh; overflow:auto; }
+  #ccreate .cclabel { display:block; color:var(--dim); font-size:.82rem; margin:.6rem 0 .25rem; }
+  #ccreate .ccinput { width:100%; background:var(--bg); border:1px solid var(--line);
+                      color:var(--ink); border-radius:8px; padding:.6rem; font-size:1rem; }
+  #ccreate .arow { display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
+  /* Media view (canonical.media): raster images inline, mesh 3D models in an
+     in-browser WebGL viewer (opened in the #media overlay so the 15s refresh
+     can't wipe a live canvas), everything else as a download link. */
+  .media-grid { display:flex; flex-wrap:wrap; gap:.5rem; margin:.4rem 0 .2rem; }
+  .media-thumb { width:120px; height:120px; border:1px solid var(--line); border-radius:8px;
+                 background:var(--bg); overflow:hidden; display:flex; align-items:center;
+                 justify-content:center; cursor:pointer; }
+  .media-thumb img { max-width:100%; max-height:100%; object-fit:contain; display:block; }
+  .media-item { display:flex; justify-content:space-between; gap:.6rem; align-items:center;
+                flex-wrap:wrap; padding:.5rem 0; border-top:1px solid var(--line); }
+  .media-item:first-of-type { border-top:none; }
+  .media-meta { display:flex; gap:.5rem; align-items:baseline; flex-wrap:wrap; min-width:0; }
+  .media-note { flex-basis:100%; color:var(--dim); font-size:.8rem; }
+  a.dl { color:var(--link); text-decoration:underline dotted; text-underline-offset:3px;
+         font-size:.85rem; white-space:nowrap; }
+  button.mini.view { background:none; border:1px solid var(--link); color:var(--link); }
+  button.mini.view.active { background:var(--bg); color:var(--ink); }
+  #media { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none;
+           align-items:center; justify-content:center; z-index:12; padding:1rem; }
+  #media .sheet { background:var(--card); border:1px solid var(--line); border-radius:14px;
+                  padding:1rem; width:min(96vw,900px); height:min(90vh,720px);
+                  display:flex; flex-direction:column; }
+  #mediaviewer { flex:1; min-height:0; margin-top:.6rem; border:1px solid var(--line);
+                 border-radius:10px; background:var(--bg); overflow:hidden; position:relative; }
+  #mediaviewer canvas { display:block; }
+  .media-tabs { display:flex; gap:.4rem; }
+  /* Account tab: new-key and change-password overlays (separate, like #ccreate,
+     so the 15s auto-refresh can't wipe a half-typed key name or password). */
+  #keynew, #chpw { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+                   align-items:center; justify-content:center; z-index:11; padding:1rem; }
+  #keynew .sheet, #chpw .sheet { background:var(--card); border:1px solid var(--line);
+                   border-radius:14px; padding:1.1rem; width:min(96vw,520px);
+                   max-height:86vh; overflow:auto; }
+  #keynew .cclabel, #chpw .cclabel { display:block; color:var(--dim); font-size:.82rem;
+                   margin:.6rem 0 .25rem; }
+  #keynew .ccinput, #chpw .ccinput { width:100%; background:var(--bg);
+                   border:1px solid var(--line); color:var(--ink); border-radius:8px;
+                   padding:.6rem; font-size:1rem; }
+  #keynew .arow, #chpw .arow { display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
+  .keycode { font-family:ui-monospace,monospace; font-size:.85rem; background:var(--bg);
+             border:1px solid var(--line); border-radius:8px; padding:.6rem;
+             word-break:break-all; margin:.5rem 0; }
+  .krow { display:flex; justify-content:space-between; gap:.6rem; align-items:center;
+          flex-wrap:wrap; padding:.55rem 0; border-top:1px solid var(--line); }
+  .krow:first-of-type { border-top:none; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Loobric</h1>
+  <nav id="tabs"></nav>
+  <span class="spacer"></span>
+  <span id="whoami" class="muted"></span>
+  <button id="logout" class="mini reject" style="display:none" onclick="doLogout()">Sign out</button>
+</header>
+
+<main id="view"></main>
+
+<div id="login"><form onsubmit="return doAuth(event)">
+  <strong id="logintitle">Sign in to Loobric</strong>
+  <input id="email" type="email" placeholder="email" autocomplete="username" required>
+  <input id="password" type="password" placeholder="password" autocomplete="current-password" required>
+  <div class="err" id="loginerr"></div>
+  <button type="submit" id="loginbtn">Sign in</button>
+  <div class="muted" style="text-align:center;font-size:.85rem">
+    <span id="loginswitch" class="link-ish" onclick="toggleAuthMode()">No account? Create one</span>
+  </div>
+</form></div>
+
+<div id="toast"></div>
+
+<div id="detail" onclick="if(event.target.id==='detail')closeDetail()">
+  <div class="sheet">
+    <div class="row"><strong id="detailtitle"></strong>
+      <button class="mini reject" onclick="closeDetail()">Close</button></div>
+    <pre id="detailbody"></pre>
+  </div>
+</div>
+
+<!-- 3D model viewer. A separate overlay (not rebuilt by render(), like #detail)
+     so the 15s auto-refresh can't tear down a live WebGL canvas mid-spin. -->
+<div id="media" onclick="if(event.target.id==='media')closeMedia()">
+  <div class="sheet">
+    <div class="row"><strong>3D model</strong>
+      <span class="rowact"><span class="media-tabs" id="mediatabs"></span>
+        <button class="mini reject" onclick="closeMedia()">Close</button></span></div>
+    <div id="mediaviewer"></div>
+  </div>
+</div>
+
+<!-- In-page confirm/prompt: native window.confirm/prompt can be permanently
+     suppressed by the browser's "prevent additional dialogs" checkbox. -->
+<div id="ask" onclick="if(event.target.id==='ask')askCancel()">
+  <div class="sheet">
+    <div id="askmsg"></div>
+    <input id="askinput" onkeydown="if(event.key==='Enter')askOk(); else if(event.key==='Escape')askCancel();">
+    <div class="arow">
+      <button class="mini reject" onclick="askCancel()">Cancel</button>
+      <button class="mini confirm" onclick="askOk()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create tool from catalog: a pre-populated form (name editable; nominal
+     geometry shown read-only with provenance badges). Body is filled by
+     openCreateFromCatalog(). No QA/status fields here by design (M2). -->
+<div id="ccreate" onclick="if(event.target.id==='ccreate')closeCreate()">
+  <div class="sheet">
+    <div class="row"><strong>Create tool from catalog</strong>
+      <button class="mini reject" onclick="closeCreate()">Cancel</button></div>
+    <div id="ccbody"></div>
+  </div>
+</div>
+
+<!-- New API key: a form, then a one-time reveal of the plain key (copy now).
+     A separate overlay so the 15s refresh can't wipe a half-typed name or the
+     revealed key. -->
+<div id="keynew" onclick="if(event.target.id==='keynew')closeKeyNew()">
+  <div class="sheet">
+    <div class="row"><strong>New API key</strong>
+      <button class="mini reject" onclick="closeKeyNew()">Cancel</button></div>
+    <div id="keynewbody"></div>
+  </div>
+</div>
+
+<!-- Change password: separate overlay (same reasoning). -->
+<div id="chpw" onclick="if(event.target.id==='chpw')closeChpw()">
+  <div class="sheet">
+    <div class="row"><strong>Change password</strong>
+      <button class="mini reject" onclick="closeChpw()">Cancel</button></div>
+    <label class="cclabel" for="pw_cur">Current password</label>
+    <input id="pw_cur" class="ccinput" type="password" autocomplete="current-password">
+    <label class="cclabel" for="pw_new">New password</label>
+    <input id="pw_new" class="ccinput" type="password" autocomplete="new-password">
+    <label class="cclabel" for="pw_new2">Confirm new password</label>
+    <input id="pw_new2" class="ccinput" type="password" autocomplete="new-password"
+           onkeydown="if(event.key==='Enter')submitChangePw(); else if(event.key==='Escape')closeChpw();">
+    <div id="pwerr" style="color:var(--bad);font-size:.85rem;min-height:1em;margin-top:.4rem"></div>
+    <div class="arow">
+      <button class="mini reject" onclick="closeChpw()">Cancel</button>
+      <button class="mini confirm" onclick="submitChangePw()">Change password</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// Machines is the ONE binding surface — proposals (the old Inbox) are folded in
+// as a "pending review" band/filter on the entries themselves.
+const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["audit","Audit"],["account","Account"]];
+let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
+              machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{}, keys:[], me:null, users:[] };
+
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0,2600); }
+
+// In-page confirm/prompt (native dialogs can be permanently suppressed).
+let _askResolve=null, _askInput=false;
+function _openAsk(message, withInput, def){
+  return new Promise(res=>{ _askResolve=res; _askInput=withInput;
+    $("#askmsg").textContent=message;
+    const inp=$("#askinput"); inp.style.display=withInput?"block":"none";
+    if(withInput){ inp.value=def||""; setTimeout(()=>{ inp.focus(); inp.select(); },30); }
+    $("#ask").style.display="flex"; });
+}
+function _askDone(v){ $("#ask").style.display="none"; const r=_askResolve; _askResolve=null; if(r) r(v); }
+function askOk(){ _askDone(_askInput ? $("#askinput").value : true); }
+function askCancel(){ _askDone(_askInput ? null : false); }
+function confirmDialog(message){ return _openAsk(message,false).then(v=>v===true); }
+function promptDialog(message, def){ return _openAsk(message,true,def); }
+
+async function api(method, path, body){
+  const r = await fetch("/api/v1"+path, {method, credentials:"same-origin",
+    headers: body?{"Content-Type":"application/json"}:{}, body: body?JSON.stringify(body):undefined});
+  if(r.status===401){ $("#login").style.display="flex"; throw new Error("auth"); }
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.detail||("HTTP "+r.status));
+  return data;
+}
+// The login overlay does double duty: sign in OR create an account. Registration
+// is open (the first account becomes admin; the rest are regular users), so a new
+// user can self-serve here instead of needing the CLI.
+let authMode = "login";
+function setAuthMode(mode){
+  authMode = mode;
+  const reg = mode === "register";
+  $("#logintitle").textContent = reg ? "Create your Loobric account" : "Sign in to Loobric";
+  $("#loginbtn").textContent   = reg ? "Create account" : "Sign in";
+  $("#loginswitch").textContent= reg ? "Have an account? Sign in" : "No account? Create one";
+  $("#password").setAttribute("autocomplete", reg ? "new-password" : "current-password");
+  $("#loginerr").textContent = "";
+}
+function toggleAuthMode(){ setAuthMode(authMode === "login" ? "register" : "login"); }
+
+async function doAuth(ev){ ev.preventDefault();
+  const email = $("#email").value, password = $("#password").value;
+  try {
+    if(authMode === "register"){
+      await api("POST","/auth/register",{email, password});
+    }
+    // Either path ends in a session: register then log in to sign the new user in.
+    await api("POST","/auth/login",{email, password});
+    $("#login").style.display = "none";
+    setAuthMode("login");
+    refresh();
+  } catch(e){
+    $("#loginerr").textContent = authMode === "register"
+      ? ("Could not create account: " + (e.message === "auth" ? "try again" : (e.message||"try a different email")))
+      : "Sign-in failed - check credentials.";
+  }
+  return false;
+}
+
+async function doLogout(){
+  try { await api("POST","/auth/logout"); } catch(e){ /* clear the UI regardless */ }
+  state.me = null; $("#whoami").textContent = ""; $("#logout").style.display = "none";
+  $("#email").value = ""; $("#password").value = ""; setAuthMode("login");
+  $("#login").style.display = "flex";
+}
+
+// Read a provenance-tagged canonical field's value / source by dotted path.
+function cf(obj, path){ let n=(obj&&obj.canonical)||{}; for(const p of path.split(".")) n=(n||{})[p]; return n?n.value:null; }
+const rid = (o)=>o.internal.id;
+// a tool-table entry's human label: its observed description, else the ";comment" parsed
+// from a linuxcnc raw line (so entries synced before description flowed still show it).
+function entryName(s){
+  const d=cf(s,"description"); if(d) return d;
+  const data=((s.clients||{}).linuxcnc||{}).data; const raw=data&&data.raw;
+  if(raw){ const i=raw.indexOf(";"); if(i>=0) return raw.slice(i+1).trim()||null; }
+  return null;
+}
+
+async function refresh(){
+  try {
+    const [inbox, tools, sets, machines, audit, catalog, keys, me] = await Promise.all([
+      api("GET","/instance-inbox"), api("GET","/tool-instance-records"),
+      api("GET","/tool-set-records"), api("GET","/machine-records"),
+      api("GET","/audit-logs?limit=50"), api("GET","/tool-catalog-records"),
+      api("GET","/auth/keys"), api("GET","/auth/me")]);
+    state.inbox=inbox.items; state.tools=tools.items; state.toolsets=sets.items;
+    state.machines=machines.items; state.audit=audit.logs||[]; state.catalogs=catalog.items;
+    state.keys = Array.isArray(keys) ? keys : (keys.items||[]); state.me = me||null;
+    $("#whoami").textContent = (me && me.email) ? me.email : "";
+    $("#logout").style.display = me ? "" : "none";
+    state.machineNames=Object.fromEntries(machines.items.map(m=>[rid(m), cf(m,"name")||rid(m).slice(0,8)]));
+    state.toolNames=Object.fromEntries(tools.items.map(t=>[rid(t), cf(t,"name")||rid(t).slice(0,8)]));
+    state.proposalByEntry=Object.fromEntries(inbox.items.map(p=>[p.entry.id, p]));
+    const tables = await Promise.all(machines.items.map(m =>
+      api("GET", "/tool-table-entry-records?machine_id="+rid(m)).then(t=>[rid(m),t.items]).catch(()=>[rid(m),[]])));
+    state.entriesByMachine=Object.fromEntries(tables);
+    state.entriesById={}; for(const entries of Object.values(state.entriesByMachine)) for(const s of entries) state.entriesById[rid(s)]=s;
+    // Admin-only: the account roster (how many accounts exist, and who they are).
+    // Non-admins get a 403 here, so only fetch it for admins and tolerate failure.
+    state.users = isAdmin(me)
+      ? await api("GET","/admin/users").then(u=>u.users||[]).catch(()=>[]) : [];
+    render();
+  } catch(e){ if(e.message!=="auth") toast("Load failed: "+e.message); }
+}
+
+function unboundEntries(){
+  const out=[];
+  for(const m of state.machines) for(const s of (state.entriesByMachine[rid(m)]||[]))
+    if(cf(s,"bound_instance_id")==null) out.push({entry:s, machine:m});
+  return out;
+}
+// "Pending review": unbound entries the server has a proposed match for, awaiting
+// a Same tool / Different decision. (Unbound entries with no guess just bind new.)
+function hasProposal(entry){
+  const p=state.proposalByEntry[rid(entry)];
+  return !!(p && p.proposed_instance && p.proposed_instance.id);
+}
+function pendingEntries(){ return unboundEntries().filter(({entry})=>hasProposal(entry)); }
+function togglePending(){ state.pendingOnly=!state.pendingOnly; render(); }
+
+// Admin check tolerant of either signal: is_admin (the bool) or role==="admin".
+// Older servers omitted is_admin from /auth/me, so role is the reliable fallback.
+function isAdmin(me){ return !!me && (me.is_admin === true || me.role === "admin"); }
+
+function render(){
+  const pending = pendingEntries().length;
+  // The Users tab is admin-only — append it just for admins (the server gates the
+  // data too, so this is convenience, not the security boundary).
+  const tabs = isAdmin(state.me) ? TABS.concat([["users","Users"]]) : TABS;
+  if(state.tab==="users" && !isAdmin(state.me)) state.tab="machines";
+  $("#tabs").innerHTML = tabs.map(([id,label])=>
+    `<button class="${state.tab===id?"active":""}" onclick="setTab('${id}')">${label}`+
+    (id==="machines"&&pending?`<span class="n">${pending}</span>`:"")+`</button>`).join("");
+  const body = {tools:renderTools,toolsets:renderToolSets,machines:renderMachines,catalog:renderCatalog,audit:renderAudit,account:renderAccount,users:renderUsers}[state.tab]();
+  // A fresh account is empty, which makes Loobric hard to "see". Offer the demo
+  // right where a first-timer lands — but not on the Account tab, which already
+  // carries the demo/reset controls.
+  const banner = (accountIsEmpty() && state.tab!=="account") ? `
+    <div class="card" style="border-left:3px solid var(--ok)">
+      <div class="row"><strong>Your account is empty</strong></div>
+      <div class="explain" style="margin-top:.4rem">New here? Load a small sample
+        &mdash; a machine, a two-maker catalog, a tool set, and a tool table &mdash;
+        to see how the pieces fit. Clear it any time from the Account tab.</div>
+      <div class="arow" style="margin-top:.6rem"><button class="mini create" onclick="addDemoData()">Add demo data</button></div>
+    </div>` : "";
+  $("#view").innerHTML = banner + body;
+}
+function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; render(); refresh(); }
+
+// ---- account data: demo seed + reset (the caller's own data only) -----------
+function accountIsEmpty(){
+  return !((state.tools||[]).length || (state.toolsets||[]).length ||
+           (state.machines||[]).length || (state.catalogs||[]).length);
+}
+async function addDemoData(){
+  try{
+    await api("POST","/account/seed-demo",{});
+    toast("Demo data added — explore the tabs.");
+    refresh();
+  }catch(e){ toast(e.message); }
+}
+async function resetAccount(){
+  if(!(await confirmDialog("Delete ALL tool data in this account? Your login and "+
+       "API keys are kept."))) return;
+  try{
+    await api("POST","/account/reset",{});
+    toast("Account cleared.");
+    refresh();
+  }catch(e){ toast(e.message); }
+}
+
+function showSchema(title,obj){ $("#detailtitle").textContent=title; $("#detailbody").textContent=JSON.stringify(obj,null,2); $("#detail").style.display="flex"; }
+function closeDetail(){ $("#detail").style.display="none"; }
+// Every id shown in the UI is a link to its record's schema JSON. One resolver
+// serves all item types: it finds the loaded record across every collection and
+// titles the sheet by kind. No per-type "schema" buttons.
+function showById(id){
+  for(const [label,coll] of [["Tool instance",state.tools],["Tool set",state.toolsets],
+                             ["Machine",state.machines],["Catalog record",state.catalogs]]){
+    const r=(coll||[]).find(x=>rid(x)===id);
+    if(r){ showSchema(label+" · "+(cf(r,"name")||(""+id).slice(0,8)), r); return; }
+  }
+  const e=state.entriesById&&state.entriesById[id];
+  if(e){ showSchema("Entry · T"+cf(e,"tool_number"), e); return; }
+  toast("That record isn't loaded in this view.");
+}
+// Render a record id as a clickable schema link. n = chars to show (default 8;
+// pass 0 for the full id).
+function idLink(id,n){ const s=(id==null?"":String(id)); const short=(n===0?s:s.slice(0,n||8));
+  return `<a class="id link" title="${esc(s)}" onclick="showById('${esc(s)}')">${esc(short)}</a>`; }
+
+// ---- Binding lives on the Machines tab (proposals folded in) ----------------
+async function confirmProp(id){ try{ await api("POST","/instance-inbox/"+id+"/confirm"); toast("Bound. Nothing overwritten."); refresh(); }catch(e){ toast(e.message); } }
+async function rejectProp(id){ try{ await api("POST","/instance-inbox/"+id+"/reject"); toast("Dismissed - won't be suggested again."); refresh(); }catch(e){ toast(e.message); } }
+async function bindNew(entryId){ const s=state.entriesById[entryId], name=s?entryName(s):null;
+  // Mint+bind a new instance from this entry: /bind with no instance_id in the body.
+  try{ await api("POST","/tool-table-entry-records/"+entryId+"/bind", name?{name}:{});
+       toast(name?`Bound a new tool "${name}".`:"Bound a new tool from the entry."); refresh(); }catch(e){ toast(e.message); } }
+async function unbindEntry(entryId){ if(!(await confirmDialog("Unbind this entry? The instance stays; only the binding clears."))) return;
+  try{ await api("POST","/tool-table-entry-records/"+entryId+"/unbind"); toast("Unbound."); refresh(); }catch(e){ toast(e.message); } }
+
+// ---- delete (human admin actions; provenance human@web) --------------------
+async function deleteRecord(id){ const t=state.tools.find(x=>rid(x)===id);
+  if(!(await confirmDialog(`Delete tool "${cf(t,"name")||id.slice(0,8)}"? Any entry holding it is unbound (its data stays).`))) return;
+  try{ await api("DELETE","/tool-instance-records/"+id); toast("Deleted tool."); refresh(); }catch(e){ toast(e.message); } }
+async function deleteMachine(id){
+  if(!(await confirmDialog(`Delete machine "${state.machineNames[id]}" and its tool table? Tool instances stay.`))) return;
+  try{ const r=await api("DELETE","/machine-records/"+id); toast(`Deleted machine (${r.entries_removed} entr${r.entries_removed===1?"y":"ies"}).`); refresh(); }catch(e){ toast(e.message); } }
+async function deleteEntry(id){
+  if(!(await confirmDialog("Remove this reported entry? If the controller pushes it again, it returns."))) return;
+  try{ await api("DELETE","/tool-table-entry-records/"+id); toast("Removed entry."); refresh(); }catch(e){ toast(e.message); } }
+async function deleteSet(id){ const s=state.toolsets.find(x=>rid(x)===id);
+  if(!(await confirmDialog(`Delete tool set "${cf(s,"name")||id.slice(0,8)}"? The tools are not deleted.`))) return;
+  try{ await api("DELETE","/tool-set-records/"+id); if(state.setSel===id) state.setSel=null; toast("Deleted set."); refresh(); }catch(e){ toast(e.message); } }
+
+// ---- tool set from a machine (orchestrates existing canonical doors) --------
+function _boundInstances(machineId){
+  return [...new Set((state.entriesByMachine[machineId]||[]).map(s=>cf(s,"bound_instance_id")).filter(Boolean))];
+}
+async function createSetFromMachine(machineId){
+  const mname=state.machineNames[machineId], ids=_boundInstances(machineId);
+  if(!ids.length){ toast("No bound tools on this machine yet - bind/confirm some first."); return; }
+  const name=await promptDialog(`New tool set from ${mname} (${ids.length} bound tool(s)):`, mname);
+  if(name===null) return; if(!name.trim()){ toast("A name is required."); return; }
+  try{
+    const sid=(await api("POST","/tool-set-records",{})).internal.id;   // no client section: the web UI isn't a data client
+    await api("POST","/tool-set-records/"+sid+"/assert",{path:"name",value:name.trim(),actor:"human@web"});
+    await api("POST","/tool-set-records/"+sid+"/assert",{path:"machine_id",value:machineId,actor:"human@web"});
+    await api("POST","/tool-set-records/"+sid+"/members",{actor:"human@web",members:ids.map(id=>({tool_record_id:id}))});
+    toast(`Created "${name.trim()}" from ${mname} (${ids.length} tool(s)).`);
+    state.tab="toolsets"; refresh();
+  }catch(e){ toast(e.message); }
+}
+async function refreshSet(setId){
+  const s=state.toolsets.find(x=>rid(x)===setId), machineId=cf(s,"machine_id");
+  if(!machineId){ toast("This set isn't linked to a machine."); return; }
+  // A MERGE, not a replace: the machine owns numbers/offsets, never membership.
+  // Requested members (no machine entry yet) survive; only observed numbers change.
+  try{
+    const r=await api("POST","/tool-set-records/"+setId+"/refresh",{actor:"human@web"});
+    const n=(r.set.canonical.members||[]).length, amb=(r.ambiguities||[]).length;
+    toast(`Refreshed from ${state.machineNames[machineId]||"machine"}: ${n} tool(s).`+
+          (amb?` ${amb} to review.`:"")); refresh();
+  }catch(e){ toast(e.message); }
+}
+// A suggested name for an instance: its own name, else the label of an entry it's bound in.
+function instanceNameHint(id){
+  const t=state.tools.find(x=>rid(x)===id); const own=t&&cf(t,"name"); if(own) return own;
+  for(const s of Object.values(state.entriesById)) if(cf(s,"bound_instance_id")===id){ const sn=entryName(s); if(sn) return sn; }
+  return "";
+}
+// Name a tool instance (a human assertion); pre-fills a suggestion.
+async function setName(id){
+  const name=await promptDialog("Tool name:", instanceNameHint(id));
+  if(name===null) return; if(!name.trim()){ toast("Name can't be empty."); return; }
+  try{ await api("POST","/tool-instance-records/"+id+"/assert",{path:"name",value:name.trim(),actor:"human@web"}); toast("Named."); refresh(); }catch(e){ toast(e.message); } }
+
+// ---- Tools (instances) -----------------------------------------------------
+function renderTools(){
+  if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
+  const boundAt={};
+  for(const m of state.machines) for(const s of (state.entriesByMachine[rid(m)]||[])){
+    const b=cf(s,"bound_instance_id"); if(b)(boundAt[b]=boundAt[b]||[]).push({m,n:cf(s,"tool_number")}); }
+  return state.tools.map(t=>{
+    const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), where=(boundAt[rid(t)]||[]);
+    return `<div class="card">
+      <div class="row"><strong>${esc(cf(t,"name")||"(unnamed)")}</strong>
+        <span>${idLink(rid(t))}
+          <button class="mini link" onclick="setName('${rid(t)}')">${cf(t,"name")?"Rename":"Set name"}</button></span></div>
+      <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}</div>`+
+      mediaSection(t,"tool-instance-records")+
+      where.map(w=>`<div class="row" style="margin-top:.4rem"><span><span class="pill bound">bound</span> T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span></div>`).join("")+
+      `<div class="row" style="margin-top:.6rem"><span class="muted">${where.length} binding(s)</span>
+        <button class="unbind" onclick="deleteRecord('${rid(t)}')">Delete tool</button></div>`+
+    `</div>`;
+  }).join("");
+}
+
+// ---- Tool Sets -------------------------------------------------------------
+function openSet(id){ state.tab="toolsets"; state.setSel=id; render(); }
+function backToToolSets(){ state.setSel=null; render(); }
+async function removeMember(setId, toolId){
+  const s=state.toolsets.find(x=>rid(x)===setId); if(!s) return;
+  const tname=state.toolNames[toolId]||toolId.slice(0,8);
+  if(!(await confirmDialog(`Remove "${tname}" from "${cf(s,"name")||setId.slice(0,8)}"? The tool itself isn't deleted.`))) return;
+  // Read-modify-write over the replace-only members door (the same move as
+  // `loobric_server remove-from-set`): keep every other member and its number, drop this one.
+  const members=(s.canonical.members||[])
+    .filter(m=>m.tool_record_id!==toolId)
+    .map(m=>({tool_record_id:m.tool_record_id, number:(m.number||{}).value}));
+  try{ await api("POST","/tool-set-records/"+setId+"/members",{members, actor:"human@web"}); toast("Removed from set."); refresh(); }
+  catch(e){ toast(e.message); }
+}
+
+function renderToolSets(){
+  if(state.setSel) return renderToolSetDetail();
+  if(!state.toolsets.length) return `<div class="empty">No tool sets yet.</div>`;
+  return state.toolsets.map(s=>{
+    const machine=cf(s,"machine_id"), members=(s.canonical.members||[]);
+    return `<div class="card">
+      <div class="row"><strong class="link-ish" onclick="openSet('${rid(s)}')">${esc(cf(s,"name")||"(unnamed)")}</strong>
+        <span>${idLink(rid(s))}</span></div>
+      <div class="muted">${members.length} tool(s)${machine?" &middot; linked to "+esc(state.machineNames[machine]||machine.slice(0,8)):" &middot; not linked to a machine"}</div>
+      <div class="row" style="margin-top:.6rem"><span class="rowact">
+        ${machine?`<button class="mini link" onclick="refreshSet('${rid(s)}')">Refresh from machine</button>`:""}
+        <button class="unbind" onclick="deleteSet('${rid(s)}')">Delete</button></span></div>
+    </div>`;
+  }).join("");
+}
+function renderToolSetDetail(){
+  const s=state.toolsets.find(x=>rid(x)===state.setSel);
+  if(!s) return `<div class="empty">Tool set not found.<br><span class="link-ish" onclick="backToToolSets()">Back to tool sets</span></div>`;
+  const machine=cf(s,"machine_id");
+  const members=(s.canonical.members||[]).slice()
+    .sort((a,b)=>(((a.number||{}).value)??1e9)-(((b.number||{}).value)??1e9));
+  const rows = members.length ? members.map(m=>{
+    const tid=m.tool_record_id, num=m.number||{};
+    const t=state.tools.find(x=>rid(x)===tid);
+    const tname=t?(cf(t,"name")||tid.slice(0,8)):(state.toolNames[tid]||tid.slice(0,8));
+    const dia=t?cf(t,"geometry.diameter"):null, shape=t?cf(t,"geometry.shape"):null;
+    const numDisp=num.value!=null?`T${num.value}`:`<span class="unknownval">no #</span>`;
+    return `<div class="frow">
+      <span class="flabel">${numDisp} ${provBadge(num.source||"unknown")}</span>
+      <span class="fval"><strong>${esc(tname)}</strong>${shape?` <span class="muted">${esc(shape)}</span>`:""}${dia!=null?` <span class="muted">&#x2300;${dia}</span>`:""} ${idLink(tid)}</span>
+      <button class="mini del" onclick="removeMember('${rid(s)}','${tid}')">Remove</button>
+    </div>`;
+  }).join("") : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric_server add-to-set</code>.</div>`;
+  return `<div class="row" style="margin-bottom:.6rem">
+      <button class="mini link" onclick="backToToolSets()">&#x2190; Back to tool sets</button>
+      <span class="rowact">
+        ${machine?`<button class="mini link" onclick="refreshSet('${rid(s)}')">Refresh from machine</button>`:""}
+        <button class="unbind" onclick="deleteSet('${rid(s)}')">Delete</button></span></div>
+    <div class="card">
+      <div class="row"><strong>${esc(cf(s,"name")||"(unnamed)")}</strong>${idLink(rid(s),0)}</div>
+      <div class="muted" style="margin-top:.3rem">${members.length} tool(s)${machine?" &middot; linked to "+esc(state.machineNames[machine]||machine.slice(0,8))+" &middot; member numbers inherited from its tool table":" &middot; not linked to a machine"}</div>
+      <div class="explain" style="margin-top:.6rem">Each member shows its tool number and the <b>source</b> that vouches for it &mdash; ${provBadge("asserted")} declared, ${provBadge("observed")} inherited from a machine, ${provBadge("unknown")} no number yet.</div>
+      <div class="section-h">Members</div>${rows}
+    </div>`;
+}
+
+// ---- Machines (+ tool tables) ----------------------------------------------
+function renderMachines(){
+  if(!state.machines.length) return `<div class="empty">No machines yet.<br><span class="muted">They register on first sync from a controller.</span></div>`;
+  const pending = pendingEntries().length;
+  const banner = pending
+    ? `<div class="explain">&#x26A0; <b>${pending}</b> tool-table entr${pending===1?"y has":"ies have"} a proposed tool awaiting your decision &mdash; <b>Same tool</b> binds the server's guess, <b>Different</b> rejects it, <b>Bind new</b> mints a fresh instance. <label style="margin-left:.5rem;white-space:nowrap"><input type="checkbox" ${state.pendingOnly?"checked":""} onclick="togglePending()"> only pending review</label></div>`
+    : (state.pendingOnly ? `<div class="explain">Nothing pending review. <label style="margin-left:.5rem"><input type="checkbox" checked onclick="togglePending()"> only pending review</label></div>` : "");
+  const cards = state.machines.map(m=>{
+    let entries=(state.entriesByMachine[rid(m)]||[]).slice().sort((a,b)=>(cf(a,"tool_number")||0)-(cf(b,"tool_number")||0));
+    if(state.pendingOnly) entries=entries.filter(s=>hasProposal(s));
+    if(state.pendingOnly && !entries.length) return "";
+    const body = entries.length ? entries.map(s=>entryRow(m,s)).join("")
+      : `<div class="muted">${state.pendingOnly?"nothing pending on this machine":"empty tool table"}</div>`;
+    return `<div class="card">
+      <div class="row"><strong>${esc(state.machineNames[rid(m)])}</strong>
+        <span class="rowact">${idLink(rid(m))}<span class="muted">${esc(cf(m,"controller_type")||"")}</span>
+          <button class="mini create" onclick="createSetFromMachine('${rid(m)}')">Create tool set</button>
+          <button class="unbind" onclick="deleteMachine('${rid(m)}')">Delete machine</button></span></div>
+      ${body}</div>`;
+  }).join("");
+  return banner + cards;
+}
+// One row per tool-table entry. Binding lives here (the single binding surface):
+// an unbound entry the server proposed a match for offers Same tool / Different /
+// Bind new — the SAME options the old Inbox had — so you can confirm the server's
+// guess instead of being funnelled into minting a duplicate. An unbound entry
+// with no proposed match just offers Bind new.
+function entryRow(m,s){
+  const bound=cf(s,"bound_instance_id"), dia=cf(s,"offsets.diameter");
+  const p = bound ? null : state.proposalByEntry[rid(s)];
+  const matched = p && p.proposed_instance && p.proposed_instance.id;
+  const guess = matched
+    ? `<span class="muted"> &#x2192; same as <b>${esc(p.proposed_instance.name||p.proposed_instance.id.slice(0,8))}</b>${p.proposed_instance.diameter!=null?" &#x2300;"+p.proposed_instance.diameter:""}${typeof p.confidence==="number"?" &middot; "+Math.round(p.confidence*100)+"%":""}</span>`
+    : "";
+  let actions;
+  if(bound){
+    actions = `<button class="unbind" onclick="unbindEntry('${rid(s)}')">Unbind</button>`;
+  } else if(matched){
+    actions = `<button class="mini confirm" onclick="confirmProp('${p.id}')">Same tool</button>`+
+              `<button class="mini reject" onclick="rejectProp('${p.id}')">Different</button>`+
+              `<button class="mini create" onclick="bindNew('${rid(s)}')">Bind new</button>`;
+  } else {
+    actions = `<button class="mini create" onclick="bindNew('${rid(s)}')">Bind new</button>`;
+  }
+  return `<div class="trow">
+    <div class="tinfo">
+      <span class="tnum link-ish" onclick="showById('${rid(s)}')">T${cf(s,"tool_number")}</span>
+      <span>${esc(entryName(s)||"")}</span>
+      <span class="muted">${dia!=null?"&#x2300;"+dia:""}</span>
+      ${bound?`<span class="pill bound">${esc(state.toolNames[bound]||bound.slice(0,8))}</span>`:`<span class="pill unbound">unbound</span>`}
+      ${guess}
+    </div>
+    <div class="rowact">${actions}
+      <button class="mini del" onclick="deleteEntry('${rid(s)}')">Remove</button></div>
+  </div>`;
+}
+
+// ---- Media view (canonical.media) ------------------------------------------
+// A record's canonical.media is a list of {role, ref, content_type, filename,
+// size}. We SHOW it so a human can visually confirm an imported tool: raster
+// images inline, mesh 3D models in an in-browser WebGL viewer (online-3d-viewer,
+// loaded lazily from a CDN — no build step), everything else as a download link.
+//
+// STEP renders too: online-3d-viewer >=0.15 reads STEP/IGES via its
+// occt-import-js (OpenCascade) kernel, which it fetches from the CDN itself —
+// it wraps the kernel in a same-origin blob worker on the fly, so there is no
+// vendoring and no build step, just a brief one-time WASM download on first 3D
+// view. Mesh formats render instantly (bundled JS loaders). See TOOL_SCHEMA §7.7.
+const O3DV_VERSION = "0.18.0";
+const O3DV_ENGINE_URL = "https://cdn.jsdelivr.net/npm/online-3d-viewer@"+O3DV_VERSION+"/build/engine/o3dv.min.js";
+// Mesh formats with loaders bundled in the engine (pure JS) — render instantly.
+const VIEWABLE_MESH = new Set(["stl","obj","ply","off","3ds","gltf","glb","fbx","dae","wrl","vrml","3mf"]);
+// CAD solids o3dv renders through its CDN-fetched occt (OpenCascade) kernel.
+const VIEWABLE_CAD = new Set(["step","stp","ste","iges","igs","ige","brep","brp"]);
+const VIEWABLE_3D = new Set([...VIEWABLE_MESH, ...VIEWABLE_CAD]);
+const MEDIA_ROLE_LABEL = {model_3d:"3D model", model_3d_basic:"3D model (basic)",
+  drawing_2d:"2D drawing", image:"Image", icon:"Icon", logo:"Logo", document:"Document"};
+
+function mediaBytesUrl(base,id,ref){ return "/api/v1/"+base+"/"+id+"/media/"+ref; }
+function mediaExt(m){ const f=m.filename||""; const i=f.lastIndexOf("."); return i>=0?f.slice(i+1).toLowerCase():""; }
+function mediaIsImage(m){ const ct=(m.content_type||"").toLowerCase();
+  return ct.indexOf("image/")===0 || ["png","jpg","jpeg","gif","webp","bmp","svg"].includes(mediaExt(m)); }
+function mediaIsModel(m){ return m.role==="model_3d" || m.role==="model_3d_basic"
+  || VIEWABLE_3D.has(mediaExt(m)) || (m.content_type||"").toLowerCase().indexOf("model/")===0; }
+function mediaViewable3D(m){ return VIEWABLE_3D.has(mediaExt(m)); }
+function humanSize(n){ if(n==null) return ""; if(n<1024) return n+" B";
+  if(n<1048576) return (n/1024).toFixed(0)+" KB"; return (n/1048576).toFixed(1)+" MB"; }
+function recordMedia(rec){ return (((rec||{}).canonical||{}).media||{}).value || []; }
+function _findMediaRecord(id){
+  for(const c of (state.catalogs||[])) if(rid(c)===id) return {rec:c, base:"tool-catalog-records"};
+  for(const t of (state.tools||[]))    if(rid(t)===id) return {rec:t, base:"tool-instance-records"};
+  return null;
+}
+
+// The media block for a record's detail/card. Empty string when there's nothing
+// to show, so callers can drop it in unconditionally.
+function mediaSection(rec, base){
+  const items = recordMedia(rec);
+  if(!items.length) return "";
+  const id = rid(rec);
+  const images = items.filter(mediaIsImage);
+  const models = items.filter(m=>mediaIsModel(m) && !mediaIsImage(m));
+  const others = items.filter(m=>!mediaIsImage(m) && !mediaIsModel(m));
+  let html = `<div class="section-h">Media</div>`;
+  if(images.length){
+    html += `<div class="media-grid">` + images.map(m=>{
+      const url = mediaBytesUrl(base,id,m.ref);
+      return `<a class="media-thumb" href="${esc(url)}" target="_blank" rel="noopener"
+                 title="${esc(m.filename||m.role)}"><img src="${esc(url)}" alt="${esc(m.role)}"></a>`;
+    }).join("") + `</div>`;
+  }
+  html += models.map(m=>{
+    const url = mediaBytesUrl(base,id,m.ref), label = MEDIA_ROLE_LABEL[m.role]||"3D model";
+    const meta = `<span class="media-meta"><strong>${esc(label)}</strong>`+
+      `<span class="muted">${esc(m.filename||"")}${m.size!=null?" &middot; "+humanSize(m.size):""}</span></span>`;
+    const dl = `<a class="dl" href="${esc(url)}" download="${esc(m.filename||"")}">Download</a>`;
+    if(mediaViewable3D(m)){
+      return `<div class="media-item">${meta}<span class="rowact">
+        <button class="mini view" onclick="openModelViewer('${id}','${esc(m.ref)}')">View 3D</button>${dl}</span></div>`;
+    }
+    // A model format the viewer doesn't recognize (STEP/IGES/mesh all render
+    // above) — offer the file so a CAD tool can open it.
+    return `<div class="media-item">${meta}<span class="rowact">${dl}</span>
+      <div class="media-note">Opens in CAD (e.g. FreeCAD). A browser 3D preview of this format isn't shown here.</div></div>`;
+  }).join("");
+  html += others.map(m=>{
+    const url = mediaBytesUrl(base,id,m.ref), label = MEDIA_ROLE_LABEL[m.role]||"File";
+    return `<div class="media-item"><span class="media-meta"><strong>${esc(label)}</strong>
+      <span class="muted">${esc(m.filename||"")}${m.size!=null?" &middot; "+humanSize(m.size):""}</span></span>
+      <a class="dl" href="${esc(url)}" download="${esc(m.filename||"")}">Download</a></div>`;
+  }).join("");
+  return html;
+}
+
+// Lazily pull the viewer engine from the CDN — only when a model is actually
+// opened, so the WASM-free engine bundle never loads for media-less records.
+let _o3dvLoad=null, _viewer=null, _viewerModels=[], _viewerCtx=null;
+function loadViewerEngine(){
+  if(window.OV) return Promise.resolve(window.OV);
+  if(_o3dvLoad) return _o3dvLoad;
+  _o3dvLoad = new Promise((res,rej)=>{
+    const s=document.createElement("script"); s.src=O3DV_ENGINE_URL;
+    s.onload=()=>window.OV?res(window.OV):rej(new Error("viewer engine missing"));
+    s.onerror=()=>{ _o3dvLoad=null; rej(new Error("could not load the 3D viewer engine")); };
+    document.head.appendChild(s);
+  });
+  return _o3dvLoad;
+}
+function _destroyViewer(){ if(_viewer && _viewer.Destroy){ try{ _viewer.Destroy(); }catch(e){} } _viewer=null; }
+function openModelViewer(id, ref){
+  const found=_findMediaRecord(id);
+  if(!found){ toast("That record isn't loaded in this view."); return; }
+  // Prefer the detailed model_3d; offer a basic one as a fallback toggle.
+  _viewerModels = recordMedia(found.rec).filter(m=>mediaIsModel(m) && mediaViewable3D(m))
+    .sort((a,b)=>(a.role==="model_3d"?0:1)-(b.role==="model_3d"?0:1));
+  _viewerCtx = {id, base:found.base};
+  const startRef = _viewerModels.some(m=>m.ref===ref) ? ref : ((_viewerModels[0]||{}).ref);
+  $("#media").style.display="flex";   // size the host before the viewer measures it
+  mountModel(startRef);
+}
+function _renderViewerTabs(activeRef){
+  const tabs=$("#mediatabs");
+  tabs.innerHTML = _viewerModels.length<2 ? "" : _viewerModels.map(m=>
+    `<button class="mini view ${m.ref===activeRef?"active":""}" onclick="mountModel('${esc(m.ref)}')">${esc(MEDIA_ROLE_LABEL[m.role]||"Model")}</button>`).join("");
+}
+async function mountModel(ref){
+  if(!_viewerCtx) return;
+  _renderViewerTabs(ref);
+  const host=$("#mediaviewer");
+  host.innerHTML = `<div class="muted" style="padding:1rem">Loading 3D model&hellip;</div>`;
+  const m=_viewerModels.find(x=>x.ref===ref) || _viewerModels[0];
+  if(!m){ host.innerHTML=`<div class="muted" style="padding:1rem">No renderable 3D model.</div>`; return; }
+  try{
+    const OV=await loadViewerEngine();
+    const resp=await fetch(mediaBytesUrl(_viewerCtx.base,_viewerCtx.id,ref), {credentials:"same-origin"});
+    if(!resp.ok) throw new Error("HTTP "+resp.status);
+    const blob=await resp.blob();
+    // Wrap the bytes in a File named with the real filename — online-3d-viewer
+    // picks its loader from the extension (the bytes URL ends in a hash, not .stl).
+    const file=new File([blob], m.filename||("model."+(mediaExt(m)||"stl")), {type:m.content_type||""});
+    _destroyViewer();
+    host.innerHTML="";
+    _viewer=new OV.EmbeddedViewer(host, {
+      backgroundColor:new OV.RGBAColor(16,21,26,255),
+      defaultColor:new OV.RGBColor(180,190,200),
+      onModelLoadFailed:()=>{ host.innerHTML=`<div class="muted" style="padding:1rem">Could not read this 3D file in the browser. Use Download to open it in CAD.</div>`; }
+    });
+    _viewer.LoadModelFromFileList([file]);
+  }catch(e){
+    host.innerHTML=`<div class="muted" style="padding:1rem">3D preview unavailable: ${esc(e.message)}. Use Download to open the file.</div>`;
+  }
+}
+function closeMedia(){
+  $("#media").style.display="none"; _destroyViewer();
+  _viewerModels=[]; _viewerCtx=null;
+  $("#mediaviewer").innerHTML=""; $("#mediatabs").innerHTML="";
+}
+
+// ---- Catalog records (READ-ONLY: the visual drift detector) ----------------
+// A ToolCatalogRecord is a nominal, *asserted* published spec. The whole reason
+// this surface exists in M2 is provenance visibility: every field is shown next
+// to its `source`, so a manufacturer's claim (asserted:…) reads differently from
+// a real measurement (observed:…), and an honest gap (unknown) from either.
+// No create/edit surface here by design — authoring is CLI-only this slice.
+function provBadge(source){
+  const src = String(source || "unknown");
+  const kind = src.split(":")[0];
+  const cls = {asserted:"asserted", observed:"observed", derived:"derived", unknown:"unknown"}[kind] || "unknown";
+  return `<span class="prov ${cls}" title="${esc(src)}">${esc(src)}</span>`;
+}
+// One {value, unit?, source} leaf rendered next to its provenance badge. A null
+// value (or an `unknown` source) renders an explicit "unknown" — never a blank
+// that could be mistaken for zero/empty.
+function catalogField(label, leaf){
+  const src = (leaf && leaf.source) || "unknown";
+  const kind = String(src).split(":")[0];
+  const isUnknown = !leaf || leaf.value == null || kind === "unknown";
+  const val = isUnknown
+    ? `<span class="unknownval">unknown</span>`
+    : esc(leaf.value) + (leaf.unit ? ` <span class="muted">${esc(leaf.unit)}</span>` : "");
+  return `<div class="frow"><span class="flabel">${esc(label)}</span>`+
+         `<span class="fval">${val}</span>${provBadge(src)}</div>`;
+}
+function openCatalog(id){ state.tab="catalog"; state.catalogSel=id; render(); }
+function backToCatalog(){ state.catalogSel=null; render(); }
+
+function renderCatalog(){
+  if(state.catalogSel) return renderCatalogDetail();
+  if(!state.catalogs.length) return `<div class="empty">No catalog records yet.<br><span class="muted">Author them with the loobric_server CLI (create-catalog-record); this surface is read-only.</span></div>`;
+  const explain = `<div class="explain">Published catalog specs &mdash; nominal, <b>asserted</b> data. Open one to see every field beside the <b>source</b> that vouches for it, so a manufacturer's claim reads differently from a real measurement.</div>`;
+  return explain + state.catalogs.map(c=>{
+    const name=cf(c,"name"), mfr=cf(c,"manufacturer"), pc=cf(c,"product_code");
+    return `<div class="card">
+      <div class="row"><strong class="link-ish" onclick="openCatalog('${rid(c)}')">${esc(name||"(unnamed)")}</strong>
+        ${idLink(rid(c))}</div>
+      <div class="muted">${mfr?esc(mfr):"<i>manufacturer unknown</i>"}${pc!=null?" &middot; "+esc(pc):""}</div>
+      <div class="row" style="margin-top:.6rem"><span class="muted">catalog record</span>
+        <span class="rowact">
+          <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button>
+        </span></div>
+    </div>`;
+  }).join("");
+}
+function renderCatalogDetail(){
+  const c=state.catalogs.find(x=>rid(x)===state.catalogSel);
+  if(!c) return `<div class="empty">Record not found.<br><span class="link-ish" onclick="backToCatalog()">Back to catalog</span></div>`;
+  const can=c.canonical||{};
+  const idDefs=[["name","Name"],["manufacturer","Manufacturer"],["product_code","Product code"],
+                ["item_type","Item type"],["components","Components"]];
+  const idRows=idDefs.filter(([k])=>can[k]).map(([k,label])=>catalogField(label,can[k])).join("");
+  const geom=can.geometry||{};
+  const gKeys=Object.keys(geom);
+  const geomRows=gKeys.length
+    ? gKeys.map(k=>catalogField(k.replace(/_/g," "), geom[k])).join("")
+    : `<div class="muted" style="padding:.45rem 0">No geometry recorded &mdash; honestly sparse, not zero.</div>`;
+  const made=instancesFromCatalog(rid(c)).length;
+  return `<div class="row" style="margin-bottom:.6rem">
+      <button class="mini link" onclick="backToCatalog()">&#x2190; Back to catalog</button>
+      <span class="rowact">
+        <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button></span></div>
+    <div class="card">
+      <div class="row"><strong>${esc(cf(c,"name")||"(unnamed)")}</strong>${idLink(rid(c),0)}</div>
+      ${made?`<div class="muted" style="margin-top:.3rem">${made} tool${made===1?"":"s"} created from this catalog record.</div>`:""}
+      <div class="explain" style="margin-top:.6rem">Each field shows its value and the <b>source</b> that vouches for it:
+        ${provBadge("asserted")} a declared / nominal claim &middot;
+        ${provBadge("observed")} a real measurement &middot;
+        ${provBadge("unknown")} an honest gap (never a guess).</div>
+      <div class="section-h">Identity</div>${idRows}
+      <div class="section-h">Geometry</div>${geomRows}
+      ${mediaSection(c,"tool-catalog-records")}
+    </div>`;
+}
+
+// ---- Create tool from catalog (the audited catalog→instance door) ----------
+// Browse → this opens a form pre-populated with the catalog's defaults: the name
+// is pre-filled and EDITABLE; the nominal geometry is shown READ-ONLY beside its
+// provenance badges (what you're creating from). No QA/status fields here — that
+// is a deferred future home (M2 form is deliberately thin). Confirm POSTs an
+// optional {name} to .../create-instance, which stamps catalog_type_id on a new,
+// UNBOUND instance (a catalog is not a machine position).
+let _ccFrom = null;   // id of the catalog record the open form is creating from
+// How many instances already point back at this catalog record — a client-side
+// filter over the already-fetched instances (WHERE catalog_type_id == id), NOT a
+// stored back-reference.
+function instancesFromCatalog(id){ return state.tools.filter(t=>cf(t,"catalog_type_id")===id); }
+function openCreateFromCatalog(id){
+  const c=state.catalogs.find(x=>rid(x)===id); if(!c){ toast("Catalog record not found."); return; }
+  _ccFrom=id;
+  const can=c.canonical||{}, name=cf(c,"name")||"";
+  const geom=can.geometry||{}, gKeys=Object.keys(geom);
+  const geomRows=gKeys.length
+    ? gKeys.map(k=>catalogField(k.replace(/_/g," "), geom[k])).join("")
+    : `<div class="muted" style="padding:.45rem 0">No geometry recorded &mdash; honestly sparse, not zero.</div>`;
+  const made=instancesFromCatalog(id).length;
+  $("#ccbody").innerHTML = `
+    <div class="explain" style="margin-top:.6rem">Creating a physical tool from
+      <b>${esc(name||"this catalog record")}</b>. The new tool links back to this
+      catalog record and is left <b>unbound</b> &mdash; not yet on a machine.</div>
+    <label class="cclabel" for="ccname">Name</label>
+    <input id="ccname" class="ccinput" value="${esc(name)}" placeholder="tool name"
+           onkeydown="if(event.key==='Enter')submitCreateFromCatalog(); else if(event.key==='Escape')closeCreate();">
+    <div class="section-h">Nominal geometry (read-only)</div>
+    <div class="muted" style="font-size:.82rem;margin-bottom:.2rem">What you're creating from &mdash; the catalog's published spec.</div>
+    ${geomRows}
+    ${made?`<div class="muted" style="margin-top:.8rem">${made} tool${made===1?"":"s"} already created from this catalog record.</div>`:""}
+    <div class="arow">
+      <button class="mini reject" onclick="closeCreate()">Cancel</button>
+      <button class="mini confirm" onclick="submitCreateFromCatalog()">Create tool</button>
+    </div>`;
+  $("#ccreate").style.display="flex";
+  setTimeout(()=>{ const i=$("#ccname"); if(i){ i.focus(); i.select(); } },30);
+}
+function closeCreate(){ $("#ccreate").style.display="none"; _ccFrom=null; }
+async function submitCreateFromCatalog(){
+  if(!_ccFrom) return;
+  const id=_ccFrom, name=(($("#ccname")||{}).value||"").trim();
+  try{
+    const inst=await api("POST","/tool-catalog-records/"+id+"/create-instance", name?{name}:{});
+    closeCreate();
+    toast(`Created tool "${cf(inst,"name")||rid(inst).slice(0,8)}" — unbound, linked to this catalog record.`);
+    refresh();   // re-pull instances so the new tool (and the count) reflect it
+  }catch(e){ toast(e.message); }
+}
+
+// ---- Account: API keys + change password -----------------------------------
+// The browser session authenticates this page; API keys are for non-browser
+// clients (the loobric_server CLI, FreeCAD, LinuxCNC). A new key's plain value is shown
+// ONCE at creation (the server only stores its hash), so the create flow reveals
+// it for copying and never again.
+function renderAccount(){
+  const me = state.me || {};
+  const keys = state.keys || [];
+  const keyRows = keys.length ? keys.map(k=>{
+    const scopes=(k.scopes||[]).join(" ");
+    const active = k.is_active!==false;
+    return `<div class="krow">
+      <span class="tinfo">
+        <strong>${esc(k.name||"(unnamed)")}</strong>
+        <span class="id" title="${esc(k.id||"")}">${esc(String(k.id||"").slice(0,8))}</span>
+        ${scopes?`<span class="muted">${esc(scopes)}</span>`:""}
+        ${active?"":'<span class="pill bad">revoked</span>'}
+      </span>
+      ${active?`<button class="mini del" onclick="revokeKey('${esc(k.id)}','${esc(k.name||"")}')">Revoke</button>`:""}
+    </div>`;
+  }).join("") : `<div class="muted" style="padding:.45rem 0">No API keys yet.</div>`;
+  return `
+    <div class="card">
+      <div class="row"><strong>${esc(me.email||"Account")}</strong>
+        ${me.role?`<span class="pill info">${esc(me.role)}</span>`:""}</div>
+      <div class="row" style="margin-top:.7rem"><span class="muted">Password</span>
+        <button class="mini link" onclick="openChangePw()">Change password</button></div>
+    </div>
+    <div class="card">
+      <div class="row"><strong>API keys</strong>
+        <button class="mini create" onclick="openNewKey()">New key</button></div>
+      <div class="explain" style="margin-top:.6rem">API keys authenticate non-browser
+        clients (the <code>loobric_server</code> CLI, FreeCAD, LinuxCNC). A key is shown
+        <b>once</b> at creation &mdash; copy it then. Revoking takes effect immediately.</div>
+      ${keyRows}
+    </div>
+    <div class="card">
+      <div class="row"><strong>Demo data</strong></div>
+      <div class="explain" style="margin-top:.6rem">Load a small sample &mdash; a
+        machine, a two-maker catalog, a couple of tools, a tool set, and a tool
+        table &mdash; to explore Loobric. Or reset to clear all tool data and start
+        fresh with your own. Both affect only this account; your login and API keys
+        are kept.</div>
+      <div class="arow" style="margin-top:.6rem">
+        ${accountIsEmpty()
+          ? `<button class="mini create" onclick="addDemoData()">Add demo data</button>`
+          : `<button class="mini" disabled title="Reset first to reload the demo">Add demo data</button>`}
+        <button class="mini del" onclick="resetAccount()">Reset tool data</button>
+      </div>
+    </div>`;
+}
+
+function openNewKey(){
+  $("#keynewbody").innerHTML = `
+    <label class="cclabel" for="kn_name">Name</label>
+    <input id="kn_name" class="ccinput" placeholder="e.g. laptop CLI"
+           onkeydown="if(event.key==='Enter')submitNewKey(); else if(event.key==='Escape')closeKeyNew();">
+    <label class="cclabel" for="kn_scopes">Scopes</label>
+    <input id="kn_scopes" class="ccinput" value="read write" placeholder="space-separated, e.g. read write">
+    <div class="muted" style="font-size:.82rem;margin-top:.3rem">Common: <code>read write</code>
+      for a full client, or <code>read</code> for read-only.</div>
+    <div class="arow">
+      <button class="mini reject" onclick="closeKeyNew()">Cancel</button>
+      <button class="mini confirm" onclick="submitNewKey()">Create key</button>
+    </div>`;
+  $("#keynew").style.display="flex";
+  setTimeout(()=>{ const i=$("#kn_name"); if(i) i.focus(); },30);
+}
+function closeKeyNew(){ $("#keynew").style.display="none"; }
+async function submitNewKey(){
+  const name=(($("#kn_name")||{}).value||"").trim();
+  const scopes=(($("#kn_scopes")||{}).value||"").trim().split(/\s+/).filter(Boolean);
+  if(!name){ toast("A name is required."); return; }
+  try{
+    const k=await api("POST","/auth/keys",{name, scopes});
+    // Reveal the plain key ONCE — the server keeps only its hash.
+    $("#keynewbody").innerHTML = `
+      <div class="explain" style="margin-top:.6rem">Key <b>${esc(name)}</b> created.
+        Copy it now &mdash; it won't be shown again.</div>
+      <div class="keycode" id="kn_value">${esc(k.key)}</div>
+      <div class="arow">
+        <button class="mini link" onclick="copyKey()">Copy</button>
+        <button class="mini confirm" onclick="closeKeyNew(); refresh();">Done</button>
+      </div>`;
+  }catch(e){ toast(e.message); }
+}
+function copyKey(){ const el=$("#kn_value"); if(!el) return;
+  const t=el.textContent;
+  if(navigator.clipboard) navigator.clipboard.writeText(t).then(()=>toast("Copied."),()=>toast("Copy failed — select and copy manually."));
+  else toast("Copy not supported — select and copy manually.");
+}
+async function revokeKey(id, name){
+  if(!(await confirmDialog(`Revoke API key "${name||String(id).slice(0,8)}"? Any client using it stops working immediately.`))) return;
+  try{ await api("DELETE","/auth/keys/"+id); toast("Key revoked."); refresh(); }catch(e){ toast(e.message); }
+}
+
+function openChangePw(){
+  $("#pw_cur").value=""; $("#pw_new").value=""; $("#pw_new2").value=""; $("#pwerr").textContent="";
+  $("#chpw").style.display="flex";
+  setTimeout(()=>$("#pw_cur").focus(),30);
+}
+function closeChpw(){ $("#chpw").style.display="none"; }
+async function submitChangePw(){
+  const cur=($("#pw_cur")||{}).value||"", n1=($("#pw_new")||{}).value||"", n2=($("#pw_new2")||{}).value||"";
+  const err=$("#pwerr"); err.textContent="";
+  if(!cur||!n1){ err.textContent="All fields are required."; return; }
+  if(n1!==n2){ err.textContent="New passwords don't match."; return; }
+  try{
+    await api("POST","/auth/change-password",{current_password:cur, new_password:n1});
+    closeChpw(); toast("Password changed.");
+  }catch(e){ err.textContent=e.message||"Change failed."; }
+}
+
+// ---- Audit -----------------------------------------------------------------
+function renderUsers(){
+  // Admin-only roster. The server never sends password hashes or key material —
+  // only the per-account summary, so there is nothing secret to leak here.
+  const us = state.users || [];
+  const count = `<div class="row" style="margin-bottom:.5rem"><strong>${us.length}</strong>&nbsp;account(s)</div>`;
+  if(!us.length) return count + `<div class="empty">No accounts.</div>`;
+  const flags = u => [u.is_admin?"admin":null, u.is_active===false?"inactive":null,
+                      u.is_verified?"verified":null].filter(Boolean).join(", ");
+  return count + `<div class="card"><table>`+
+    `<tr><th>email</th><th>role</th><th>keys</th><th>created</th><th></th></tr>`+
+    us.map(u=>`<tr><td>${esc(u.email||"")}</td><td>${esc(u.role||"")}</td>`+
+      `<td>${u.api_key_count||0}</td>`+
+      `<td class="muted">${esc((u.created_at||"").replace("T"," ").slice(0,16))}</td>`+
+      `<td class="muted">${esc(flags(u))}</td></tr>`).join("")+
+    `</table></div>`;
+}
+
+function renderAudit(){
+  if(!state.audit.length) return `<div class="empty">No audit entries.</div>`;
+  return `<div class="card"><table><tr><th>when</th><th>op</th><th>what</th></tr>`+
+    state.audit.map(l=>`<tr><td class="muted">${esc((l.timestamp||"").replace("T"," ").slice(0,16))}</td>
+      <td>${esc(l.operation)}</td><td>${esc(l.entity_type)} ${idLink(l.entity_id)}</td></tr>`).join("")+
+    `</table></div>`;
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
+

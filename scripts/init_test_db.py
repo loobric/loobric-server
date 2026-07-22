@@ -21,7 +21,7 @@ Prerequisites:
 
 Usage:
     # For fresh database:
-    rm smooth.db && <restart server>
+    rm loobric.db && <restart server>
     python init_test_db.py [--base-url BASE_URL]
     
 Examples:
@@ -36,8 +36,8 @@ from pathlib import Path
 
 
 def run_cli_command(args, input_text=None):
-    """Run the smooth CLI command (requires the loobric-smooth package; e.g.
-    `pip install -e ../loobric-smooth`).
+    """Run the loobric CLI command (requires the loobric-cli package; e.g.
+    `pip install -e ../loobric-cli`).
 
     Args:
         args: List of command arguments
@@ -46,7 +46,7 @@ def run_cli_command(args, input_text=None):
     Returns:
         subprocess.CompletedProcess: Result of the command
     """
-    cmd = ["python3", "-m", "smooth_client.cli.main"] + args
+    cmd = ["python3", "-m", "loobric.cli.main"] + args
     
     result = subprocess.run(
         cmd,
@@ -76,7 +76,7 @@ def init_test_database(base_url: str = "http://127.0.0.1:8000"):
     print("=" * 60)
     print(f"API URL: {base_url}")
     print("\nNote: Server must be running for this script to work.")
-    print("      For fresh database: delete smooth.db and restart server first.")
+    print("      For fresh database: delete loobric.db and restart server first.")
     
     print("\n1. Registering admin user via API...")
     # Register first user (becomes admin automatically)
@@ -159,13 +159,13 @@ def init_test_database(base_url: str = "http://127.0.0.1:8000"):
     
     print(f"\nUsage:")
     print(f"  # Use API key directly")
-    print(f"  export SMOOTH_API_KEY={admin_api_key}")
+    print(f"  export LOOBRIC_API_KEY={admin_api_key}")
     print()
     print(f"  # Or login with CLI")
-    print(f"  smooth login admin@test.com")
+    print(f"  loobric login admin@test.com")
     print()
     print(f"  # Create more API keys")
-    print(f"  smooth create-key \"My Key\" --scopes \"read write:items\"")
+    print(f"  loobric create-key \"My Key\" --scopes \"read write:items\"")
     print("=" * 60)
 
 

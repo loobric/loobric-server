@@ -1,4 +1,4 @@
-# Smooth Core
+# Loobric Core
 
 > Application-agnostic REST API and database for tool data synchronization across CAM systems, CNC machines, and tool rooms.
 
@@ -7,7 +7,7 @@
 
 ## Overview
 
-Smooth Core is the central REST API and database system that provides a unified interface for managing tool data across manufacturing systems. It's designed to bridge the gap between CAM software, CNC machines, and tool rooms with a focus on real-time synchronization and data integrity.
+Loobric Core is the central REST API and database system that provides a unified interface for managing tool data across manufacturing systems. It's designed to bridge the gap between CAM software, CNC machines, and tool rooms with a focus on real-time synchronization and data integrity.
 
 ### Key Features
 
@@ -38,26 +38,26 @@ Task-oriented walkthroughs for linking a CNC control and a CAM tool set:
 
 ## Getting Help
 
-- **Issues**: If you encounter any problems, please [open an issue](https://github.com/loobric/smooth-core/issues).
-- **Discussion**: For questions and discussions, use [GitHub Discussions](https://github.com/loobric/smooth-core/discussions).
+- **Issues**: If you encounter any problems, please [open an issue](https://github.com/loobric/loobric-server/issues).
+- **Discussion**: For questions and discussions, use [GitHub Discussions](https://github.com/loobric/loobric-server/discussions).
 
 ## Clients
 
 This project was started out of a personal need to synchronize linuxcnc machine control with FreeCAD CAM workbenches. As such, these are the reference implementations of clients.  Additional clients are welcome and encouraged.
 
-### **smooth-freecad** - FreeCAD CAM workbench integration
+### **loobric-freecad** - FreeCAD CAM workbench integration
 
-[smooth-freecad](https://github.com/loobric/smooth-freecad)
+[loobric-freecad](https://github.com/loobric/loobric-freecad)
 
-### **smooth-linuxcnc** - LinuxCNC controller integration
+### **loobric-linuxcnc** - LinuxCNC controller integration
 
-[smooth-linuxcnc](https://github.com/loobric/smooth-linuxcnc)
+[loobric-linuxcnc](https://github.com/loobric/loobric-linuxcnc)
 
-### **loobric-smooth** - Python library and CLI
+### **loobric-cli** - Python library and CLI
 
-The reference Python client — an importable `Client` library and the `smooth`
+The reference Python client — an importable `Client` library and the `loobric_server`
 command-line client. Lives in its own repo:
-[loobric-smooth](https://github.com/loobric/loobric-smooth) (`pip install loobric-smooth`).
+[loobric-cli](https://github.com/loobric/loobric-cli) (`pip install loobric-cli`).
 
 ## Contributing
 

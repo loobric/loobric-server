@@ -26,7 +26,7 @@ def test_hash_password():
     - Hash is not reversible
     - Uses bcrypt or argon2
     """
-    from smooth.auth.password import hash_password
+    from loobric_server.auth.password import hash_password
     
     password = "SecurePassword123!"
     hash1 = hash_password(password)
@@ -46,7 +46,7 @@ def test_verify_password_correct():
     - Correct password returns True
     - Verification works with any hash from hash_password
     """
-    from smooth.auth.password import hash_password, verify_password
+    from loobric_server.auth.password import hash_password, verify_password
     
     password = "SecurePassword123!"
     password_hash = hash_password(password)
@@ -62,7 +62,7 @@ def test_verify_password_incorrect():
     - Incorrect password returns False
     - Similar passwords don't match
     """
-    from smooth.auth.password import hash_password, verify_password
+    from loobric_server.auth.password import hash_password, verify_password
     
     password = "SecurePassword123!"
     wrong_password = "WrongPassword123!"
@@ -80,7 +80,7 @@ def test_create_user(db_session):
     - Password is hashed automatically
     - User is active by default
     """
-    from smooth.auth.user import create_user
+    from loobric_server.auth.user import create_user
     
     user = create_user(
         session=db_session,
@@ -103,7 +103,7 @@ def test_create_user_duplicate_email(db_session):
     - Email uniqueness enforced at database level
     - Raises appropriate exception
     """
-    from smooth.auth.user import create_user
+    from loobric_server.auth.user import create_user
     
     create_user(
         session=db_session,
@@ -128,7 +128,7 @@ def test_authenticate_user_success(db_session):
     - Returns user object on success
     - Accepts email and password
     """
-    from smooth.auth.user import create_user, authenticate_user
+    from loobric_server.auth.user import create_user, authenticate_user
     
     # Create user
     create_user(
@@ -156,7 +156,7 @@ def test_authenticate_user_wrong_password(db_session):
     - Returns None on failed authentication
     - Does not raise exception
     """
-    from smooth.auth.user import create_user, authenticate_user
+    from loobric_server.auth.user import create_user, authenticate_user
     
     create_user(
         session=db_session,
@@ -180,7 +180,7 @@ def test_authenticate_user_nonexistent(db_session):
     Assumptions:
     - Returns None if user doesn't exist
     """
-    from smooth.auth.user import authenticate_user
+    from loobric_server.auth.user import authenticate_user
     
     user = authenticate_user(
         session=db_session,
@@ -199,8 +199,8 @@ def test_authenticate_inactive_user(db_session):
     - Inactive users cannot log in
     - Returns None for inactive users
     """
-    from smooth.auth.user import create_user, authenticate_user
-    from smooth.database.schema import User
+    from loobric_server.auth.user import create_user, authenticate_user
+    from loobric_server.database.schema import User
     
     user = create_user(
         session=db_session,
@@ -230,7 +230,7 @@ def test_get_user_by_email(db_session):
     - Returns user if exists
     - Returns None if not found
     """
-    from smooth.auth.user import create_user, get_user_by_email
+    from loobric_server.auth.user import create_user, get_user_by_email
     
     create_user(
         session=db_session,
@@ -254,7 +254,7 @@ def test_get_user_by_id(db_session):
     - Returns user if exists
     - Returns None if not found
     """
-    from smooth.auth.user import create_user, get_user_by_id
+    from loobric_server.auth.user import create_user, get_user_by_id
     
     user = create_user(
         session=db_session,
@@ -279,7 +279,7 @@ def test_update_user_password(db_session):
     - New password is hashed
     - Version increments
     """
-    from smooth.auth.user import create_user, update_user_password, authenticate_user
+    from loobric_server.auth.user import create_user, update_user_password, authenticate_user
     
     user = create_user(
         session=db_session,
@@ -321,7 +321,7 @@ def test_update_password_wrong_old_password(db_session):
     - Raises exception if old password incorrect
     - Password not changed
     """
-    from smooth.auth.user import create_user, update_user_password
+    from loobric_server.auth.user import create_user, update_user_password
     
     user = create_user(
         session=db_session,
@@ -354,7 +354,7 @@ def test_create_password_reset_token(db_session):
     - Token is hashed in database
     - Returns plain token to send to user
     """
-    from smooth.auth.user import create_user, create_password_reset_token
+    from loobric_server.auth.user import create_user, create_password_reset_token
     
     user = create_user(
         session=db_session,
@@ -378,7 +378,7 @@ def test_reset_password_with_valid_token(db_session):
     - Token is consumed after use (single use)
     - User can authenticate with new password
     """
-    from smooth.auth.user import (
+    from loobric_server.auth.user import (
         create_user, create_password_reset_token, 
         reset_password_with_token, authenticate_user
     )
@@ -423,7 +423,7 @@ def test_reset_password_with_invalid_token(db_session):
     - Invalid/non-existent token raises exception
     - Password not changed
     """
-    from smooth.auth.user import reset_password_with_token
+    from loobric_server.auth.user import reset_password_with_token
     
     with pytest.raises(Exception):  # Will be specific exception
         reset_password_with_token(
@@ -441,11 +441,11 @@ def test_reset_password_with_expired_token(db_session):
     - Tokens expire after set time (e.g., 1 hour)
     - Expired token raises exception
     """
-    from smooth.auth.user import (
+    from loobric_server.auth.user import (
         create_user, create_password_reset_token,
         reset_password_with_token
     )
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     from datetime import datetime, UTC, timedelta
     
     user = create_user(
@@ -473,7 +473,7 @@ def test_reset_token_single_use(db_session):
     - Token is invalidated/deleted after successful use
     - Attempting to reuse raises exception
     """
-    from smooth.auth.user import (
+    from loobric_server.auth.user import (
         create_user, create_password_reset_token,
         reset_password_with_token
     )
@@ -511,7 +511,7 @@ def test_deactivate_user(db_session):
     - User still exists in database
     - Can be reactivated later
     """
-    from smooth.auth.user import create_user, deactivate_user, get_user_by_id
+    from loobric_server.auth.user import create_user, deactivate_user, get_user_by_id
     
     user = create_user(db_session, "test@example.com", "Password123")
     user_id = user.id
@@ -530,7 +530,7 @@ def test_first_user_is_admin(db_session):
     - First user in empty database gets is_admin=True
     - Critical for system bootstrap
     """
-    from smooth.auth.user import create_user
+    from loobric_server.auth.user import create_user
     
     # Create first user
     first_user = create_user(db_session, "admin@example.com", "Password123")
@@ -547,7 +547,7 @@ def test_subsequent_users_not_admin(db_session):
     - Additional users have is_admin=False
     - Multi-tenant isolation
     """
-    from smooth.auth.user import create_user
+    from loobric_server.auth.user import create_user
     
     # Create first user (admin)
     create_user(db_session, "admin@example.com", "Password123")
@@ -566,7 +566,7 @@ def test_user_has_admin_field(db_session):
     - is_admin is a boolean field
     - Defaults to False (except for first user)
     """
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     from sqlalchemy import inspect
     
     mapper = inspect(User)

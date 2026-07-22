@@ -51,7 +51,7 @@ the difference is accounted for by `requested` / `pending bind` members.
 ### Step 0 — Empty start
 The database is empty. No machines, instances, or sets.
 
-### Step 1 — `smooth-linuxcnc` first sync
+### Step 1 — `loobric-linuxcnc` first sync
 The controller client runs `sync`.
 - The **Machine** `millstone` is created.
 - **17 tool table entries** are created from the machine's `.tbl`, all **unbound**
@@ -70,7 +70,7 @@ set is machine-bound, each member's number is **observed** from the machine.
 
 > State: set `millstone` = 17 loaded members. Machine = 17 entries. In sync.
 
-### Step 4 — `smooth-freecad` first download
+### Step 4 — `loobric-freecad` first download
 The programmer launches the sync tool. It fetches from the server and shows set
 `millstone` with 17 tools, all not yet present locally. The operator chooses to
 download the set and all tools, then presses **apply**.
@@ -84,7 +84,7 @@ prompt that forced a second apply. That is a bug, not the intended flow.)
 
 > State: FreeCAD, server, and machine all agree on 17 loaded tools. In sync.
 
-### Step 5 — Programmer needs a new tool (FreeCAD + `smooth-freecad`)
+### Step 5 — Programmer needs a new tool (FreeCAD + `loobric-freecad`)
 Setting up a job, the programmer needs a tool the machine doesn't have yet. In the
 FreeCAD tool library manager they import or create a toolbit and add it to the
 `millstone` library. Back in the sync tool they press **apply**.
@@ -104,7 +104,7 @@ not as a mismatch to "fix".
 > `refresh from machine` here changes nothing: it reconciles the 17 loaded members
 > and **leaves the requested member intact**.
 
-### Step 7 — Controller surfaces the request (`smooth-linuxcnc`)
+### Step 7 — Controller surfaces the request (`loobric-linuxcnc`)
 The controller client runs its scheduled `sync`. It pulls the machine-bound set,
 compares the 18 members against the 17 local entries, and finds one member with no
 entry — a request.
@@ -113,7 +113,7 @@ entry — a request.
 
 It does **not** alter the `.tbl` on its own and does **not** drop the request.
 
-### Step 8 — Operator mounts the tool, controller reconciles (machine + `smooth-linuxcnc`)
+### Step 8 — Operator mounts the tool, controller reconciles (machine + `loobric-linuxcnc`)
 The operator physically mounts the requested tool and assigns it a pocket (e.g.
 tool number 18), adding the line to the `.tbl`. On the next `sync`, the controller
 pushes a **new tool table entry** (observed: number + offsets). The machine now has
@@ -131,7 +131,7 @@ confidence). Entry 18 is now bound to the requested instance; the member flips f
 
 > Report everywhere: `millstone — 18 tools, in sync. Machine — 18 tools.`
 
-### Step 10 — FreeCAD catches up (`smooth-freecad`)
+### Step 10 — FreeCAD catches up (`loobric-freecad`)
 The programmer's next sync pulls the now-loaded member, which gained an observed
 tool number. Nothing to push.
 

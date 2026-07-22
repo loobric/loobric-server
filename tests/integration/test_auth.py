@@ -234,7 +234,7 @@ def test_auth_me_accepts_api_key(client):
 
     It previously read only the session cookie, so an API-key client got 401
     here even though every data endpoint accepted the same key — which broke
-    the API-key-first onboarding flow (e.g. `smooth whoami`). This test runs
+    the API-key-first onboarding flow (e.g. `loobric whoami`). This test runs
     with auth ENABLED (no disable_auth fixture).
     """
     client.post("/api/v1/auth/register",
@@ -261,7 +261,7 @@ def test_auth_me_accepts_api_key(client):
 @pytest.mark.integration
 def test_auth_me_exposes_is_admin(client):
     """Regression: GET /auth/me must return is_admin, so clients (the Web UI's
-    admin Users tab, `smooth whoami`) can tell an admin from a regular user.
+    admin Users tab, `loobric whoami`) can tell an admin from a regular user.
 
     The first registrant becomes the admin, so /auth/me should report
     is_admin=True and role="admin" for them. This previously omitted is_admin

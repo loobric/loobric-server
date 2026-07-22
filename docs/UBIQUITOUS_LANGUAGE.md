@@ -1,6 +1,6 @@
 # Ubiquitous Language
 
-A shared vocabulary for the Smooth / Loobric project. Use these terms consistently in code,
+A shared vocabulary for the Loobric / Loobric project. Use these terms consistently in code,
 docs, UI, marketing, and conversation. When code and this document disagree, fix one of them —
 don't let them drift.
 
@@ -10,9 +10,9 @@ Status: **v2 vocabulary settled 2026-06-09** (grill-me session; see `RESEARCH_BR
 now the sectioned record model defined in `TOOL_SCHEMA.md`. The old v2-flat **`ToolRecord`** facade
 term is **retired** in favor of **`ToolInstanceRecord`** / **`ToolCatalogRecord`**. `TOOL_SCHEMA.md`
 is the authoritative contract; if it and this document disagree, the contract models in
-`smooth/contract/` win and this document is the bug. Terms marked ⚠️ have known ambiguity.
+`loobric_server/contract/` win and this document is the bug. Terms marked ⚠️ have known ambiguity.
 
-**Language rule — client neutrality.** Smooth is client-application agnostic. The names of
+**Language rule — client neutrality.** Loobric is client-application agnostic. The names of
 specific applications (FreeCAD, LinuxCNC, Fusion, …) never appear in the normative vocabulary,
 the facade API, core docs, or core UI text. They appear only (a) when referring to that
 application's own artifact or term (a `.fctl` file IS a "FreeCAD tool library"), and (b) in
@@ -52,7 +52,7 @@ The public API exposes these concepts. Every tool-domain entity is a **sectioned
 | **Conflict** | Both sides changed the same bound field between syncs. The field freezes (neither side overwritten) until resolved in the Inbox. |
 | **Sync Plan / Apply** | The preview-first sync pattern clients use for interactive sync: **plan** computes what a sync would do — every item classified (in sync, changed here, changed on server, new, deleted, conflict) — touching neither disk nor server; **apply** executes only the user's per-item direction choices. The classification is a suggested default, never a railroad; conflicts and deletions default to "leave unsynced". |
 | **Account reset** | A per-account operation that deletes **all** of the caller's tool data — instance/catalog records, tool sets, machines, tool-table entries, binding proposals — while keeping the account and its API keys. Exists to return to a clean slate for testing/demos. Public path `POST /api/v1/account/reset`; **owner-gated** (any signed-in user may reset their *own* data — it is entirely user-scoped). The inverse of **Add demo data**. (Cross-account/factory wipes stay admin-gated: see `/api/v1/admin/wipe`.) |
-| **Add demo data** | A per-account operation that **seeds** a fresh account with a small demo — a machine, a two-manufacturer catalog, a couple of physical tools, a tool set, and a pushed tool table — so a first-time visitor has something to explore without the CLI. Built by replaying the normal create/assert/sync doors, so every seeded field carries real provenance. Public path `POST /api/v1/account/seed-demo`; **owner-gated**. Refuses (409) on an account that already holds tool data — load it on a clean slate (**Account reset** first to reload), and it rolls back to that empty slate if any step fails. Mirrors loobric-smooth's `examples/quickstart.sh`. UI label: **Add demo data**. (Not "sample data"/"seed" in user-facing prose — "demo data" is the one term.) |
+| **Add demo data** | A per-account operation that **seeds** a fresh account with a small demo — a machine, a two-manufacturer catalog, a couple of physical tools, a tool set, and a pushed tool table — so a first-time visitor has something to explore without the CLI. Built by replaying the normal create/assert/sync doors, so every seeded field carries real provenance. Public path `POST /api/v1/account/seed-demo`; **owner-gated**. Refuses (409) on an account that already holds tool data — load it on a clean slate (**Account reset** first to reload), and it rolls back to that empty slate if any step fails. Mirrors loobric-cli's `examples/quickstart.sh`. UI label: **Add demo data**. (Not "sample data"/"seed" in user-facing prose — "demo data" is the one term.) |
 
 ### How canonical data changes — provenance and the three doors
 
@@ -98,13 +98,13 @@ They return only through this document with founder sign-off:
 
 ## Server Surfaces
 
-One Smooth Core server exposes three distinct surfaces. Don't say "the facade" when you mean
+One Loobric Core server exposes three distinct surfaces. Don't say "the facade" when you mean
 one of these — name the surface.
 
 | Term | Definition |
 |------|------------|
 | **Public API** (`/api/v1`) | The product's actual contract: the REST endpoints speaking the public vocabulary above. The ONLY read/write path — every other surface, first-party or not, is a client of it. "Facade" is the internal architecture name for the layer that implements it; user- and developer-facing prose says **API** or **public API**. |
-| **Web UI** (`/ui`) | The management UI served by core: one static file, no build step, AGPL like the rest of core. Speaks only the Public API from the browser — it is a first-party *client* with no privileged access; auth is enforced by the API it calls, not by the page. Grew out of the milestone-1 "web inbox" (G2); now tabs for Machines, Tools, Tool Sets, and Audit log (the inbox is folded into the Machines tab — proposals are confirmed/rejected inline). Distinct from **Smooth Web**, the commercial hosted application (M3 rebuild). |
+| **Web UI** (`/ui`) | The management UI served by core: one static file, no build step, AGPL like the rest of core. Speaks only the Public API from the browser — it is a first-party *client* with no privileged access; auth is enforced by the API it calls, not by the page. Grew out of the milestone-1 "web inbox" (G2); now tabs for Machines, Tools, Tool Sets, and Audit log (the inbox is folded into the Machines tab — proposals are confirmed/rejected inline). Distinct from **Loobric Web**, the commercial hosted application (M3 rebuild). |
 | **API reference** (`/api/v1/docs`, `/api/v1/redoc`) | Interactive, auto-generated documentation of the Public API for developers (Swagger UI / ReDoc). Never hand-maintained — it is a *projection* of the API, generated from `/api/v1/openapi.json`. Publishing exactly the facade vocabulary and nothing else is a tested contract (deep routes are excluded from the schema). |
 | **OpenAPI schema** (`/api/v1/openapi.json`) | The machine-readable contract artifact behind the API reference; what contract tests assert against. |
 
@@ -114,11 +114,11 @@ one of these — name the surface.
 
 Words for talking about the system's structure — in design docs, code comments, and commit
 messages. They never appear in user-facing prose, client UI, or the published API: a user sees
-"the API" and "Smooth", not the layering behind them.
+"the API" and "Loobric", not the layering behind them.
 
 | Term | Definition |
 |------|------------|
-| **Facade** | The layer implementing the Public API. Under the 2026-06-18 reconciliation (R3) it is **thin**: the public API speaks the sectioned contract models in `smooth/contract/` *directly* — there is no longer a separate "facade vocabulary" translating down to a different deep one. "Facade" remains the name for the API layer (the Web UI and API reference are surfaces *on top of* it, not parts of it), and "facade gaps get fixed, never bypassed" (G3) still holds. |
+| **Facade** | The layer implementing the Public API. Under the 2026-06-18 reconciliation (R3) it is **thin**: the public API speaks the sectioned contract models in `loobric_server/contract/` *directly* — there is no longer a separate "facade vocabulary" translating down to a different deep one. "Facade" remains the name for the API layer (the Web UI and API reference are surfaces *on top of* it, not parts of it), and "facade gaps get fixed, never bypassed" (G3) still holds. |
 | **Legacy deep schema** | The retiring v1 substrate (`ToolItem` / `ToolAssembly` / `ToolInstance` / `ToolPreset` / `ToolUsage` and their routers, mounted `include_in_schema=False`). Superseded by the sectioned records; scheduled for removal (reboot R6); no compat promise; do not build on it. The richness it modeled now lives as **composition** inside the sectioned records (`TOOL_SCHEMA.md` §7.6). |
 
 ---
@@ -128,10 +128,10 @@ messages. They never appear in user-facing prose, client UI, or the published AP
 | Term | Definition |
 |------|------------|
 | **Loobric** | The company/organization and brand (loobric.com, GitHub org). Not the product name. |
-| **Smooth** | The product: an open-core tool data synchronization system. |
-| **Smooth Core** | The central REST API + database server (`smooth-core`). The thing clients talk to. Licensed AGPL-3.0 (relicensed from Elastic 2.0 on 2026-06-09, decision G6). |
-| **Client** | Any program that synchronizes tool data with a Smooth Core server: `smooth-freecad`, `smooth-linuxcnc`, the `loobric.py` CLI, or third-party integrations. Clients are MIT-licensed reference implementations. |
-| **Smooth Web** | The hosted web application. The v1 app (`smooth-web`, app.loobric.com) is retired; a v2 rebuild on the Public API is scoped in M3. Part of the commercial offering, not the open core. ⚠️ Boundary with the core **Web UI** (`/ui`, see Server Surfaces) is undecided: M3 scope (account/key management, audit browsing, backup/restore, admin) is currently slated for the core Web UI — decide which features are open `/ui` vs commercial Smooth Web before M3 starts. |
+| **Loobric** | The product: an open-core tool data synchronization system. |
+| **Loobric Core** | The central REST API + database server (`loobric-server`). The thing clients talk to. Licensed AGPL-3.0 (relicensed from Elastic 2.0 on 2026-06-09, decision G6). |
+| **Client** | Any program that synchronizes tool data with a Loobric Core server: `loobric-freecad`, `loobric-linuxcnc`, the `loobric.py` CLI, or third-party integrations. Clients are MIT-licensed reference implementations. |
+| **Loobric Web** | The hosted web application. The v1 app (`loobric-web`, app.loobric.com) is retired; a v2 rebuild on the Public API is scoped in M3. Part of the commercial offering, not the open core. ⚠️ Boundary with the core **Web UI** (`/ui`, see Server Surfaces) is undecided: M3 scope (account/key management, audit browsing, backup/restore, admin) is currently slated for the core Web UI — decide which features are open `/ui` vs commercial Loobric Web before M3 starts. |
 
 ## Domain Concepts — Tools
 
@@ -170,17 +170,17 @@ distinct entities along the catalog → physical → machine axis. Always use th
 
 | Term | Definition |
 |------|------------|
-| **Sync / Synchronization** | The core verb: making tool data consistent between Smooth Core and a client system (a CAM application's tool data, a controller's tool table, etc.). |
+| **Sync / Synchronization** | The core verb: making tool data consistent between Loobric Core and a client system (a CAM application's tool data, a controller's tool table, etc.). |
 | **Bidirectional sync** | Changes flow both ways: CAM → server → controller *and* controller → server → CAM (e.g. wear offsets entered at the machine propagate back). |
-| **Tool table** | A controller's native tool data store (e.g. a `.tbl` file with T/P/D/Z parameters). A client-side format, not a Smooth concept; Smooth models its rows as ToolTableEntries. |
+| **Tool table** | A controller's native tool data store (e.g. a `.tbl` file with T/P/D/Z parameters). A client-side format, not a Loobric concept; Loobric models its rows as ToolTableEntries. |
 | **Tool number** | The ONLY tool identifier that travels in G-code (`T3 M6`): the single point of contact between CAM's assumption and the controller's reality. Both sides' number→tool mappings are recorded (CAM numbering with the ToolSet; the machine side via Binding on `(machine, tool_number)`), making their agreement a verifiable fact. Verifying this mapping is the system's most important job — see `CONCEPTS.md`. |
 | **Pocket** | The magazine position a tool physically occupies — a tool-changer implementation detail, NOT identity. Some controllers map number→pocket 1:1; others assign pockets dynamically and remember where each tool went. Entries are keyed on `(machine, tool_number)`; `pocket` is an optional, mutable observed attribute, and Bindings survive pocket shuffles. |
-| **Tool library** | ⚠️ Client-side term only — some CAM applications call their tool collections "libraries". Inside Smooth the word is **ToolSet**; "library" appears only when naming that application's own artifact. |
+| **Tool library** | ⚠️ Client-side term only — some CAM applications call their tool collections "libraries". Inside Loobric the word is **ToolSet**; "library" appears only when naming that application's own artifact. |
 | **Change detection** | Using `version` / `updated_at` to find what changed since last sync, so clients sync deltas instead of everything. |
 | **Version (optimistic locking)** | Integer incremented on every write to an entity. A write with a stale version is a **conflict**. |
 | **Conflict** | A write attempted against a stale version, typically because two systems changed the same entity between syncs. |
 | **Bulk operation** | API endpoints that create/update many entities in one request. The API is "bulk-first" because sync workloads are batch-shaped. |
-| **Import / Export** | Moving tool data in/out of Smooth in portable formats (JSON, CSV, XML) — the no-lock-in escape hatch, distinct from live sync. |
+| **Import / Export** | Moving tool data in/out of Loobric in portable formats (JSON, CSV, XML) — the no-lock-in escape hatch, distinct from live sync. |
 
 ## Roles, Tenancy & Security
 
@@ -191,9 +191,9 @@ distinct entities along the catalog → physical → machine axis. Always use th
 | **API key** | User-created credential for programmatic/machine access (what a controller-side sync script uses). Distinct from email/password login. |
 | **Tag-based API access** | Scoping an API key's reach by entity tags (e.g. a key for machine `mill01` only sees tools tagged for it). |
 | **Audit log** | Immutable structured record of who changed what, when. Compliance/forensics, separate from operational logs. |
-| **Solo mode** | Opt-in single-user deployment mode (`SMOOTH_SOLO=1`, decision G1/D1): authentication is bypassed and every request acts as the built-in **solo user**. Exists so one person on a trusted LAN can go from `docker run` to a working sync loop with zero registration/login/API-key ceremony. Never the default; hosted and sandbox instances always run multi-user. The clients don't know or care which mode the server is in — an empty API key simply works against a solo server. |
-| **Solo user** | The built-in account (`solo@localhost.smooth`) auto-created on first request in solo mode; it owns all data created while solo. Its password is random and never disclosed, so this data is reachable *only through solo mode* — switching a server to multi-user strands it until an admin intervenes. ⚠️ The solo → multi-user migration story is undefined; define it before promoting solo mode in quickstart docs. |
-| **Multi-user mode** | The default when `SMOOTH_SOLO` is unset: registration, login, API keys, per-account isolation. Not usually named in prose — it's just how the server works; "multi-user" appears only when contrasting with solo mode. |
+| **Solo mode** | Opt-in single-user deployment mode (`LOOBRIC_SOLO=1`, decision G1/D1): authentication is bypassed and every request acts as the built-in **solo user**. Exists so one person on a trusted LAN can go from `docker run` to a working sync loop with zero registration/login/API-key ceremony. Never the default; hosted and sandbox instances always run multi-user. The clients don't know or care which mode the server is in — an empty API key simply works against a solo server. |
+| **Solo user** | The built-in account (`solo@localhost.loobric_server`) auto-created on first request in solo mode; it owns all data created while solo. Its password is random and never disclosed, so this data is reachable *only through solo mode* — switching a server to multi-user strands it until an admin intervenes. ⚠️ The solo → multi-user migration story is undefined; define it before promoting solo mode in quickstart docs. |
+| **Multi-user mode** | The default when `LOOBRIC_SOLO` is unset: registration, login, API keys, per-account isolation. Not usually named in prose — it's just how the server works; "multi-user" appears only when contrasting with solo mode. |
 
 ## Machines & Shop Concepts
 
@@ -209,7 +209,7 @@ distinct entities along the catalog → physical → machine axis. Always use th
 
 | Term | Definition |
 |------|------------|
-| **ISO 13399** | International standard for cutting tool data representation and exchange. Smooth aims to be *aligned* with (not strictly conformant to) it. |
+| **ISO 13399** | International standard for cutting tool data representation and exchange. Loobric aims to be *aligned* with (not strictly conformant to) it. |
 | **STEP-NC (ISO 14649)** | Standard for machining process data including tooling. |
 | **MTConnect** | Read-only protocol for machine-tool data; relevant for usage/wear telemetry. |
 | **GTC (Generic Tool Catalog)** | Industry format for distributing manufacturer tool catalogs; relevant to the Manufacturer Catalog feature. |
@@ -218,29 +218,29 @@ distinct entities along the catalog → physical → machine axis. Always use th
 
 | Term | Definition |
 |------|------------|
-| **Open core** | Business model: Smooth Core is free and self-hostable; revenue comes from hosting, the web UI, and team/enterprise features. |
-| **Self-hosted** | Running Smooth Core on your own infrastructure (free tier, full data control). |
+| **Open core** | Business model: Loobric Core is free and self-hostable; revenue comes from hosting, the web UI, and team/enterprise features. |
+| **Self-hosted** | Running Loobric Core on your own infrastructure (free tier, full data control). |
 | **Cloud-hosted** | Loobric-managed hosting (Hobbyist $15/mo, Professional $299/mo, Enterprise custom). |
-| **AGPL-3.0** | smooth-core's license (relicensed from Elastic 2.0 on 2026-06-09, decision G6): OSI-approved open source; network-use copyleft prevents proprietary SaaS forks while keeping self-hosting fully free. Commercial licensing covers the hosted/enterprise offering. Clients remain MIT. |
+| **AGPL-3.0** | loobric-server's license (relicensed from Elastic 2.0 on 2026-06-09, decision G6): OSI-approved open source; network-use copyleft prevents proprietary SaaS forks while keeping self-hosting fully free. Commercial licensing covers the hosted/enterprise offering. Clients remain MIT. |
 
 ---
 
 ## Reconciliation with FreeCAD CAM (ADR-000)
 
 FreeCAD's CAM workbench maintains its own ubiquitous language in `src/Mod/CAM/Roadmap/ADR/ADR-000.md`,
-extended by the Feeds & Speeds work (PR #30078). Smooth's first client lives there, so collisions are
+extended by the Feeds & Speeds work (PR #30078). Loobric's first client lives there, so collisions are
 resolved **in FreeCAD's favor** wherever FreeCAD's term is shipping. Proposed resolutions (see
 `RESEARCH_BRIEF.md` §3.4, decision D13 — pending grill-me):
 
-| Term | FreeCAD meaning | Smooth PoC meaning | Proposed resolution |
+| Term | FreeCAD meaning | Loobric PoC meaning | Proposed resolution |
 |------|-----------------|--------------------|---------------------|
-| **Preset** | Named F&S record on a Tool Bit: surface speed (Vc), chipload (Fz), optional vert-feed ratio, optional material UUID, op type. Engineering values only; raw feed/rpm derived at use-time. | `ToolPreset` = machine-specific tool-table entry (tool number, pocket, offsets) | **RESOLVED: adopt FreeCAD's meaning.** Smooth's cutting-parameter records are "Presets" with the identical schema. Smooth's old entity renamed → **ToolTableEntry**. |
-| **Tool Library** | Persisted collection of Tool Bits, independent of Jobs | ToolSet | **RESOLVED:** FreeCAD Tool Library / `.fctl` ↔ Smooth **ToolSet**. ("Library" was briefly the facade word; purged 2026-06-11 — it is FreeCAD's term, and the facade now uses the internal name.) |
-| **Machine** | `.fcm` definition: axes, limits, spindle min/max, post settings | free-string `machine_id` | Smooth **Machine entity** syncs `.fcm` content. Same word, compatible meaning. |
+| **Preset** | Named F&S record on a Tool Bit: surface speed (Vc), chipload (Fz), optional vert-feed ratio, optional material UUID, op type. Engineering values only; raw feed/rpm derived at use-time. | `ToolPreset` = machine-specific tool-table entry (tool number, pocket, offsets) | **RESOLVED: adopt FreeCAD's meaning.** Loobric's cutting-parameter records are "Presets" with the identical schema. Loobric's old entity renamed → **ToolTableEntry**. |
+| **Tool Library** | Persisted collection of Tool Bits, independent of Jobs | ToolSet | **RESOLVED:** FreeCAD Tool Library / `.fctl` ↔ Loobric **ToolSet**. ("Library" was briefly the facade word; purged 2026-06-11 — it is FreeCAD's term, and the facade now uses the internal name.) |
+| **Machine** | `.fcm` definition: axes, limits, spindle min/max, post settings | free-string `machine_id` | Loobric **Machine entity** syncs `.fcm` content. Same word, compatible meaning. |
 | **Tool Bit** | The cutter: geometry, edges, parameters, F&S Presets; persisted as `.fctb` | ≈ ToolItem (type=cutting_tool) | Equivalence documented; `.fctb` round-trip **must preserve the additive `presets` key**. |
 | **Provenance** | Per-field source string (`"user"`, `"preset:…"`); resolver never overwrites `"user"` | (audit log, coarser grain) | Adopt term + semantics for synced F&S fields. **Sync must never replace a `"user"`-provenance value silently.** |
 | **OP_TYPES** | Controlled cutting-kind vocabulary: `profile, pocket, slot, drill, adaptive, surface_finish` | (none) | Adopt verbatim for Preset records. |
-| **Tool assembly** | *Avoided* in CAM-workbench prose (confusable with Tool Controller) | Core entity (holder + cutter) | Keep `ToolAssembly` in Smooth's deep schema; never in facade/hobbyist docs. |
+| **Tool assembly** | *Avoided* in CAM-workbench prose (confusable with Tool Controller) | Core entity (holder + cutter) | Keep `ToolAssembly` in Loobric's deep schema; never in facade/hobbyist docs. |
 
 ## Naming Tensions — status after 2026-06-09 grill
 

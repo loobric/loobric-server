@@ -18,11 +18,11 @@ RUN pip install --no-cache-dir -e .
 COPY . .
 
 # Create non-root user
-RUN useradd -m -u 1000 smooth && chown -R smooth:smooth /app
-USER smooth
+RUN useradd -m -u 1000 loobric_server && chown -R loobric_server:loobric_server /app
+USER loobric_server
 
 # Expose port
 EXPOSE 8000
 
 # Default command (can be overridden in docker-compose)
-CMD ["uvicorn", "smooth.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "loobric_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

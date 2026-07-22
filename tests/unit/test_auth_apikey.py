@@ -27,8 +27,8 @@ def test_create_api_key(db_session):
     - Key is hashed in database
     - Key has name, scopes, and tags
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(
         session=db_session,
@@ -52,7 +52,7 @@ def test_create_api_key(db_session):
     assert len(plain_key) > 20  # Reasonable key length
     
     # Verify tags were saved
-    from smooth.database.schema import ApiKey
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     stmt = select(ApiKey).where(ApiKey.user_id == user.id)
@@ -70,9 +70,9 @@ def test_api_key_hashed_in_database(db_session):
     - Plain key is never stored
     - Hash is different from plain key
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
-    from smooth.database.schema import ApiKey
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     user = create_user(
@@ -104,8 +104,8 @@ def test_validate_api_key_success(db_session):
     - Returns user object on success
     - Validates key hash
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, validate_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, validate_api_key
     
     user = create_user(
         session=db_session,
@@ -138,7 +138,7 @@ def test_validate_api_key_invalid(db_session):
     - Invalid key returns None
     - Does not raise exception
     """
-    from smooth.auth.apikey import validate_api_key
+    from loobric_server.auth.apikey import validate_api_key
     
     result = validate_api_key(db_session, "invalid-key-12345")
     
@@ -153,8 +153,8 @@ def test_api_key_with_multiple_scopes(db_session):
     - Scopes stored as JSON array
     - All scopes returned on validation
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, validate_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, validate_api_key
     
     user = create_user(
         session=db_session,
@@ -184,9 +184,9 @@ def test_api_key_with_expiration(db_session):
     - expires_at is optional
     - Stored as datetime
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
-    from smooth.database.schema import ApiKey
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     user = create_user(
@@ -219,9 +219,9 @@ def test_validate_expired_api_key(db_session):
     - Expired keys return None
     - Expiration checked during validation
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, validate_api_key
-    from smooth.database.schema import ApiKey
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, validate_api_key
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     user = create_user(
@@ -255,8 +255,8 @@ def test_list_user_api_keys(db_session):
     - Returns list of ApiKey objects
     - Does not include plain keys
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, list_user_api_keys
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, list_user_api_keys
     
     user = create_user(
         session=db_session,
@@ -284,8 +284,8 @@ def test_revoke_api_key(db_session):
     - Sets is_active to False
     - Key no longer validates
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, revoke_api_key, validate_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, revoke_api_key, validate_api_key
     
     user = create_user(
         session=db_session,
@@ -301,7 +301,7 @@ def test_revoke_api_key(db_session):
     )
     
     # Get key ID
-    from smooth.database.schema import ApiKey
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     stmt = select(ApiKey).where(ApiKey.user_id == user.id)
     api_key = db_session.scalar(stmt)
@@ -323,9 +323,9 @@ def test_delete_api_key(db_session):
     - Removes from database
     - Cannot be recovered
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, delete_api_key
-    from smooth.database.schema import ApiKey
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, delete_api_key
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     user = create_user(
@@ -362,7 +362,7 @@ def test_api_key_user_relationship(db_session):
     - Foreign key to users table
     - Cannot create key for non-existent user
     """
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.apikey import create_api_key
     
     # Attempt to create key for non-existent user
     with pytest.raises(Exception):  # Will be specific exception
@@ -382,9 +382,9 @@ def test_inactive_api_key_not_validated(db_session):
     - is_active flag checked during validation
     - Inactive keys return None
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key, validate_api_key
-    from smooth.database.schema import ApiKey
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key, validate_api_key
+    from loobric_server.database.schema import ApiKey
     from sqlalchemy import select
     
     user = create_user(

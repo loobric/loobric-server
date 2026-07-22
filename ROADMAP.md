@@ -38,7 +38,7 @@ where the source carries them:
 ## Milestone 4 — small-shop phase (epic #13)
 
 - ISO 13399 / GTC catalog import (pragmatic P21 property subset)
-- FreeCAD F&S resolver provider backed by Smooth
+- FreeCAD F&S resolver provider backed by Loobric
 - Manufacturer catalog publishing
 - Hosted offering general availability
 
@@ -49,10 +49,10 @@ where the source carries them:
 - Rate limiting and hardening for public-facing deployments
 - PostgreSQL as a supported production backend
 - **Auth hardening — session cookie `Secure` flag.** The login session cookie is set
-  HttpOnly + SameSite=Lax but **without `Secure`** (`smooth/api/auth.py:381-386`), so it can
+  HttpOnly + SameSite=Lax but **without `Secure`** (`loobric_server/api/auth.py:381-386`), so it can
   ride plain HTTP despite the docstring claiming otherwise. Set `Secure` (conditionally on a
   production/HTTPS setting) so session IDs are never sent in clear text.
-- **Auth hardening — gate user registration.** `register()` (`smooth/api/auth.py:281`) has no
+- **Auth hardening — gate user registration.** `register()` (`loobric_server/api/auth.py:281`) has no
   auth dependency, so registration is unconditionally open: the first user becomes admin, but
   any anonymous caller can then create more accounts. Non-first-user registration should
   require admin auth. Two tests already assert this and currently fail against the open
@@ -63,9 +63,9 @@ where the source carries them:
 
 - **Solo → multi-user data adoption.** A solo-mode instance owns all its data as the built-in
   solo user, whose password is generated and never disclosed; switching the server to
-  multi-user (`SMOOTH_SOLO` unset) therefore strands that data under an unreachable account.
+  multi-user (`LOOBRIC_SOLO` unset) therefore strands that data under an unreachable account.
   The fix *would have been* an admin-gated operation (e.g. `POST /api/v1/account/<verb>` + a
-  `loobric` CLI verb) that reassigns every tool-data row owned by `solo@localhost.smooth` to a
+  `loobric` CLI verb) that reassigns every tool-data row owned by `solo@localhost.loobric_server` to a
   real account, run once after promotion. **Deferred as concept drift:** it only matters if a
   single-user instance later goes multi-user, which is not a path we are building for now. If
   revived, it needs a verb that clears the language gate (note: `adopt` is a retired term) and

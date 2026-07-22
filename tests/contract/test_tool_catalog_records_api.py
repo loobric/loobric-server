@@ -6,7 +6,7 @@
 Contract tests for the sectioned ToolCatalogRecord facade.
 
 Mirrors the ToolInstanceRecord tracer: responses are the three-section shape and
-validate against smooth.contract; a client writes only its own section; routine
+validate against loobric_server.contract; a client writes only its own section; routine
 sync cannot touch internal/canonical. The one difference: a catalog TYPE carries
 nominal, asserted data — there is no observe door, because a machine never
 measures a type. See docs/TOOL_SCHEMA.md §7.1.
@@ -19,9 +19,9 @@ product_code are required; spec fields stay honest-sparse.
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from smooth.contract import ToolCatalogRecord, ToolInstanceRecord
-from smooth.database.schema import AuditLog
-from smooth.database.schema import ToolCatalogRecord as Row
+from loobric_server.contract import ToolCatalogRecord, ToolInstanceRecord
+from loobric_server.database.schema import AuditLog
+from loobric_server.database.schema import ToolCatalogRecord as Row
 
 BASE = "/api/v1/tool-catalog-records"
 INSTANCE_BASE = "/api/v1/tool-instance-records"
@@ -348,7 +348,7 @@ def test_create_instance_endpoint_introduces_no_mint_wording():
     'mint' anywhere in the endpoint or its docstring (the entry-adopt flow
     elsewhere legitimately still mints; this door does not)."""
     import inspect
-    from smooth.api import tool_catalog_records as mod
+    from loobric_server.api import tool_catalog_records as mod
     assert "mint" not in inspect.getsource(mod.create_instance_from_catalog).lower()
 
 

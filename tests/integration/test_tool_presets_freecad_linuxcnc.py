@@ -23,8 +23,8 @@ def test_create_preset_without_instance_id(client, db_session):
     - Presets can reference tools by description/metadata
     - Used by FreeCAD libraries and LinuxCNC tool tables
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -82,8 +82,8 @@ def test_create_linuxcnc_preset_with_offsets(client, db_session):
     LinuxCNC tool tables include offsets and metadata but don't link
     to physical instances.
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -124,9 +124,9 @@ def test_create_linuxcnc_preset_with_offsets(client, db_session):
 @pytest.mark.integration
 def test_query_presets_by_machine_returns_all_types(client, db_session):
     """Test querying returns both presets with and without instance_id."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolAssembly, ToolInstance, ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolAssembly, ToolInstance, ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)
@@ -199,9 +199,9 @@ def test_query_presets_by_machine_returns_all_types(client, db_session):
 @pytest.mark.integration
 def test_update_preset_metadata(client, db_session):
     """Test updating metadata field on existing preset."""
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
-    from smooth.database.schema import ToolPreset
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
+    from loobric_server.database.schema import ToolPreset
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

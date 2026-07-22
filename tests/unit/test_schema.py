@@ -22,10 +22,10 @@ def test_tool_item_model_exists():
     """Test that ToolItem model is defined.
     
     Assumptions:
-    - ToolItem model exists in smooth.database.schema
+    - ToolItem model exists in loobric_server.database.schema
     - Has all required fields
     """
-    from smooth.database.schema import ToolItem
+    from loobric_server.database.schema import ToolItem
     
     assert ToolItem is not None
     assert hasattr(ToolItem, '__tablename__')
@@ -40,7 +40,7 @@ def test_tool_item_has_versioning_fields():
     - updated_at: DateTime, not null
     - version: Integer, default 1
     """
-    from smooth.database.schema import ToolItem
+    from loobric_server.database.schema import ToolItem
     
     assert hasattr(ToolItem, 'created_at')
     assert hasattr(ToolItem, 'updated_at')
@@ -56,7 +56,7 @@ def test_tool_item_has_user_attribution():
     - created_by: String (UUID), not null
     - updated_by: String (UUID), not null
     """
-    from smooth.database.schema import ToolItem
+    from loobric_server.database.schema import ToolItem
     
     assert hasattr(ToolItem, 'user_id')
     assert hasattr(ToolItem, 'created_by')
@@ -72,7 +72,7 @@ def test_tool_item_create(db_session):
     - Versioning fields auto-populated
     - JSON fields store nested data
     """
-    from smooth.database.schema import ToolItem
+    from loobric_server.database.schema import ToolItem
     
     item = ToolItem(
         user_id="user-123",
@@ -104,7 +104,7 @@ def test_tool_item_version_increments_on_update(db_session):
     - version increments on each update
     - updated_at changes on update
     """
-    from smooth.database.schema import ToolItem
+    from loobric_server.database.schema import ToolItem
     
     item = ToolItem(
         user_id="user-123",
@@ -138,7 +138,7 @@ def test_tool_assembly_model_exists():
     - ToolAssembly model exists
     - Has relationship to ToolItem
     """
-    from smooth.database.schema import ToolAssembly
+    from loobric_server.database.schema import ToolAssembly
     
     assert ToolAssembly is not None
 
@@ -150,7 +150,7 @@ def test_tool_assembly_has_versioning_and_attribution():
     Assumptions:
     - All standard fields present
     """
-    from smooth.database.schema import ToolAssembly
+    from loobric_server.database.schema import ToolAssembly
     
     assert hasattr(ToolAssembly, 'created_at')
     assert hasattr(ToolAssembly, 'updated_at')
@@ -166,7 +166,7 @@ def test_tool_instance_model_exists():
     - ToolInstance model exists
     - Has foreign key to ToolAssembly
     """
-    from smooth.database.schema import ToolInstance
+    from loobric_server.database.schema import ToolInstance
     
     assert ToolInstance is not None
     assert hasattr(ToolInstance, 'assembly_id')
@@ -175,7 +175,7 @@ def test_tool_instance_model_exists():
 @pytest.mark.unit
 def test_tool_instance_has_versioning_and_attribution():
     """Test that ToolInstance has versioning and user attribution."""
-    from smooth.database.schema import ToolInstance
+    from loobric_server.database.schema import ToolInstance
     
     assert hasattr(ToolInstance, 'created_at')
     assert hasattr(ToolInstance, 'updated_at')
@@ -192,7 +192,7 @@ def test_tool_preset_model_exists():
     - Has foreign key to ToolInstance
     - Has machine_id field
     """
-    from smooth.database.schema import ToolPreset
+    from loobric_server.database.schema import ToolPreset
     
     assert ToolPreset is not None
     assert hasattr(ToolPreset, 'machine_id')
@@ -202,7 +202,7 @@ def test_tool_preset_model_exists():
 @pytest.mark.unit
 def test_tool_preset_has_versioning_and_attribution():
     """Test that ToolPreset has versioning and user attribution."""
-    from smooth.database.schema import ToolPreset
+    from loobric_server.database.schema import ToolPreset
     
     assert hasattr(ToolPreset, 'created_at')
     assert hasattr(ToolPreset, 'updated_at')
@@ -218,7 +218,7 @@ def test_tool_usage_model_exists():
     - ToolUsage model exists
     - Has foreign key to ToolPreset
     """
-    from smooth.database.schema import ToolUsage
+    from loobric_server.database.schema import ToolUsage
     
     assert ToolUsage is not None
     assert hasattr(ToolUsage, 'preset_id')
@@ -227,7 +227,7 @@ def test_tool_usage_model_exists():
 @pytest.mark.unit
 def test_tool_usage_has_versioning_and_attribution():
     """Test that ToolUsage has versioning and user attribution."""
-    from smooth.database.schema import ToolUsage
+    from loobric_server.database.schema import ToolUsage
     
     assert hasattr(ToolUsage, 'created_at')
     assert hasattr(ToolUsage, 'updated_at')
@@ -243,7 +243,7 @@ def test_tool_set_model_exists():
     - ToolSet model exists
     - Can have type: machine_setup, job_specific, template, project
     """
-    from smooth.database.schema import ToolSet
+    from loobric_server.database.schema import ToolSet
     
     assert ToolSet is not None
     assert hasattr(ToolSet, 'type')
@@ -252,7 +252,7 @@ def test_tool_set_model_exists():
 @pytest.mark.unit
 def test_tool_set_has_versioning_and_attribution():
     """Test that ToolSet has versioning and user attribution."""
-    from smooth.database.schema import ToolSet
+    from loobric_server.database.schema import ToolSet
     
     assert hasattr(ToolSet, 'created_at')
     assert hasattr(ToolSet, 'updated_at')
@@ -268,7 +268,7 @@ def test_user_model_exists():
     - User model exists for Phase 3
     - Has email and password_hash fields
     """
-    from smooth.database.schema import User
+    from loobric_server.database.schema import User
     
     assert User is not None
     assert hasattr(User, 'email')
@@ -284,7 +284,7 @@ def test_api_key_model_exists():
     - Has foreign key to User
     - Has scopes and expiration fields
     """
-    from smooth.database.schema import ApiKey
+    from loobric_server.database.schema import ApiKey
     
     assert ApiKey is not None
     assert hasattr(ApiKey, 'user_id')
@@ -302,7 +302,7 @@ def test_relationships_defined():
     - ToolPreset references ToolInstance
     - ToolUsage references ToolPreset
     """
-    from smooth.database.schema import (
+    from loobric_server.database.schema import (
         ToolItem, ToolAssembly, ToolInstance, ToolPreset, ToolUsage
     )
     
@@ -323,7 +323,7 @@ def test_init_db_function_exists():
     - init_db() creates all tables
     - Can be called with engine parameter
     """
-    from smooth.database.schema import init_db
+    from loobric_server.database.schema import init_db
     
     assert init_db is not None
     assert callable(init_db)

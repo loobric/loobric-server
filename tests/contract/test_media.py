@@ -12,7 +12,7 @@ contract-validated.
 """
 import pytest
 
-from smooth.contract import CatalogCanonical, MediaRef, ToolCatalogRecord
+from loobric_server.contract import CatalogCanonical, MediaRef, ToolCatalogRecord
 
 CATALOG = "/api/v1/tool-catalog-records"
 # A tiny stand-in for a STEP solid — the server stores bytes opaquely; it never
@@ -23,7 +23,7 @@ FAKE_STEP = b"ISO-10303-21;\nHEADER;\n/* not a real model */\nENDSEC;\nEND-ISO-1
 @pytest.fixture(autouse=True)
 def _tmp_media(monkeypatch, tmp_path):
     """Redirect the blob store to a temp dir so tests never touch real storage."""
-    from smooth.config import settings
+    from loobric_server.config import settings
     monkeypatch.setattr(settings, "media_dir", str(tmp_path / "blobs"))
 
 

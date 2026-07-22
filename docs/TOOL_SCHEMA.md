@@ -1,9 +1,9 @@
-# Smooth Tool Schema
+# Loobric Tool Schema
 
 This document is the **authoritative contract** for how tool data is structured
-in Smooth. It is the reference for building new clients (FreeCAD, LinuxCNC,
+in Loobric. It is the reference for building new clients (FreeCAD, LinuxCNC,
 Fusion, …) and writing tests for them. The Pydantic models in
-`smooth/contract/` are the machine-readable form of everything below; they
+`loobric_server/contract/` are the machine-readable form of everything below; they
 validate the wire on the server **and** drive the client conformance test
 suite. If this document and the models disagree, the models win and this
 document is the bug.
@@ -90,7 +90,7 @@ Every canonical leaf is a **provenance-tagged field**:
 
 Canonical may nest (e.g. `geometry.diameter`); leaves are always tagged fields.
 The set of canonical fields is **entity-specific** and defined by the
-per-entity model in `smooth/contract/`. A client write that contains a
+per-entity model in `loobric_server/contract/`. A client write that contains a
 `canonical` key is rejected `400`; canonical changes go through the
 observe/assert doors (§5).
 
@@ -203,7 +203,7 @@ Two independent links, by design:
 
 - **Server → client (primary).** The server owns `internal.id`. After first
   contact the client stores that id **on its own side** — e.g. FreeCAD writes
-  `{"smooth": {"record_id": "<internal.id>", "version": …}}` into the `.fctb`
+  `{"loobric_server": {"record_id": "<internal.id>", "version": …}}` into the `.fctb`
   file. This is the client's private bookkeeping, *not* part of the wire
   sections. It is how the client knows UPDATE vs CREATE next time.
 - **Client → its own item (`client_item_id`, fallback).** The envelope carries
@@ -348,7 +348,7 @@ type** carries the manufacturer's nominal model (`asserted:catalog-import`); a
 
 **Reference, not inline bytes.** The canonical record holds only the small,
 shareable, verifiable **reference** (`ref` = the content-addressed blob key); the
-bytes live in a separate blob store (`smooth.media_store`) and are served
+bytes live in a separate blob store (`loobric_server.media_store`) and are served
 out-of-band:
 
 ```
@@ -419,7 +419,7 @@ author must remember — it is a wall they hit loudly the first time.
 
 ## 10. The client contract & how to build/test a new client
 
-**Single source of truth.** `smooth/contract/` defines Pydantic models for the
+**Single source of truth.** `loobric_server/contract/` defines Pydantic models for the
 sections, the envelope, the provenance-tagged field, and each entity's
 canonical shape. The **server validates the wire** with these models, and the
 **same models** + a shared conformance suite + the golden fixtures in

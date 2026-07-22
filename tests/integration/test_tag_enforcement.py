@@ -17,7 +17,7 @@ Assumptions:
 - Session auth bypasses tag checks (user owns all their resources)
 """
 import pytest
-from smooth.database.schema import ToolAssembly
+from loobric_server.database.schema import ToolAssembly
 
 
 @pytest.mark.integration
@@ -29,8 +29,8 @@ def test_create_assembly_with_api_key_tags(client, db_session):
     - Creating resource with unauthorized tags returns error
     - Creating resource with subset of key tags succeeds
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -108,8 +108,8 @@ def test_list_assemblies_filtered_by_api_key_tags(client, db_session):
     - API key without tags sees all resources (with proper scopes)
     - Returns only assemblies where at least one tag matches
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -186,8 +186,8 @@ def test_get_assembly_with_tag_access(client, db_session):
     - API key without matching tags gets 403
     - Resource owner can always access (session auth)
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -248,8 +248,8 @@ def test_update_assembly_with_tag_enforcement(client, db_session):
     - API key must have access to new tags being applied
     - Cannot change tags to unauthorized values
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -324,8 +324,8 @@ def test_delete_assembly_with_tag_enforcement(client, db_session):
     - API key must have access to assembly tags to delete
     - API key without matching tags cannot delete
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -395,8 +395,8 @@ def test_api_key_without_tags_accesses_all(client, db_session):
     - Can access resources with any tags (or no tags)
     - Still requires proper scopes
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "test@example.com", "Password123")
     db_session.commit()
@@ -463,8 +463,8 @@ def test_admin_scope_bypasses_tag_checks(client, db_session):
     - admin:* scope grants access to all resources regardless of tags
     - Useful for backup, monitoring, admin operations
     """
-    from smooth.auth.user import create_user
-    from smooth.auth.apikey import create_api_key
+    from loobric_server.auth.user import create_user
+    from loobric_server.auth.apikey import create_api_key
     
     user = create_user(db_session, "admin@example.com", "Password123")
     db_session.commit()
@@ -510,8 +510,8 @@ def test_session_auth_bypasses_tag_checks(client, db_session):
     - Session auth doesn't use tag filtering
     - Can create/update resources with any tags
     """
-    from smooth.auth.user import create_user
-    from smooth.api.auth import create_session
+    from loobric_server.auth.user import create_user
+    from loobric_server.api.auth import create_session
     
     user = create_user(db_session, "test@example.com", "Password123")
     session_id = create_session(user.id)

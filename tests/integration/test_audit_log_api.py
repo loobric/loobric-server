@@ -11,12 +11,12 @@ Tests role-based access control:
 
 import pytest
 from fastapi.testclient import TestClient
-from smooth.main import app
-from smooth.database.schema import Base, User, AuditLog
-from smooth.api.auth import get_db
-from smooth.auth.user import create_user
-from smooth.audit import create_audit_log
-from smooth.config import settings
+from loobric_server.main import app
+from loobric_server.database.schema import Base, User, AuditLog
+from loobric_server.api.auth import get_db
+from loobric_server.auth.user import create_user
+from loobric_server.audit import create_audit_log
+from loobric_server.config import settings
 from sqlalchemy import create_engine
 from datetime import datetime, UTC
 from uuid import uuid4

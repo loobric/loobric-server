@@ -1,7 +1,7 @@
-# How to Build a Smooth Client
+# How to Build a Loobric Client
 
-Smooth has no privileged client. The server is one public REST API, and every
-tool that connects to it — FreeCAD, LinuxCNC, the `smooth` CLI, and anything you
+Loobric has no privileged client. The server is one public REST API, and every
+tool that connects to it — FreeCAD, LinuxCNC, the `loobric` CLI, and anything you
 write — is just a client of that API with no special access. This guide is what
 you need to build your own.
 
@@ -63,15 +63,15 @@ composes it.
 Send an API key as a Bearer token on every request:
 
 ```bash
-curl -H "Authorization: Bearer $SMOOTH_API_KEY" \
+curl -H "Authorization: Bearer $LOOBRIC_API_KEY" \
   https://api.loobric.com/api/v1/tool-instance-records
 ```
 
 Get a key from your server in one of two ways:
 
 - **Web UI** — sign in, open the **Account** tab, **New key**, copy it (shown once).
-- **CLI** — `pip install loobric-smooth`, then `smooth register` / `smooth login`
-  / `smooth create-key mytool --scopes "read write"`.
+- **CLI** — `pip install loobric-cli`, then `loobric register` / `loobric login`
+  / `loobric create-key mytool --scopes "read write"`.
 
 Keys are scoped (`read`, `write:<entity>`, `delete:<entity>`, `admin:*`, …). Ask
 for the least you need; `read write` is the usual full-client set. See
@@ -147,13 +147,13 @@ Point a browser at a running server (the hosted sandbox shown):
 - **OpenAPI spec** (machine-readable): <https://api.loobric.com/api/v1/openapi.json>
 
 A self-hosted server exposes the same three at its own address. The fastest way
-to get a feel for the loop is the [sandbox quickstart](https://github.com/loobric/loobric-smooth/blob/master/docs/SANDBOX.md).
+to get a feel for the loop is the [sandbox quickstart](https://github.com/loobric/loobric-cli/blob/master/docs/SANDBOX.md).
 
 ---
 
 ## 5. Recommended approach
 
-1. **Start from the reference client.** [`loobric-smooth`](https://github.com/loobric/loobric-smooth)
+1. **Start from the reference client.** [`loobric-cli`](https://github.com/loobric/loobric-cli)
    is standard-library Python, full API coverage, and written to be read. Copy its
    transport and record-handling patterns even if you target another language.
 2. **Or generate from OpenAPI.** Feed `openapi.json` to your language's client
@@ -172,9 +172,9 @@ The API is small and fully described by its OpenAPI spec, which makes it a good
 fit for an AI coding agent. Paste a prompt like this (fill in the brackets):
 
 ```text
-You are building a Smooth client for [APPLICATION OR CONTROLLER, e.g. "Fusion 360"].
+You are building a Loobric client for [APPLICATION OR CONTROLLER, e.g. "Fusion 360"].
 
-Smooth is a CNC tool-data sync server with a single public REST API.
+Loobric is a CNC tool-data sync server with a single public REST API.
 
 Contract you must follow:
 - Base URL: [BASE_URL]/api/v1 . Authenticate EVERY request with the header
@@ -194,14 +194,14 @@ Task:
 1. Read the OpenAPI spec.
 2. Implement, in [LANGUAGE], a client that can: authenticate; list/read
    machines, tool instances, catalog records, tool sets, and tool-table entries;
-   map [APPLICATION]'s native tool format to and from the Smooth schema; and sync
+   map [APPLICATION]'s native tool format to and from the Loobric schema; and sync
    both directions with a preview-then-apply flow.
 3. Preserve the raw native payload in `clients.<name>.data`.
 4. Confirm/reject binding proposals from `/instance-inbox` instead of guessing.
 5. Ship a README with install + "connect to a server" (URL + API key) steps and
    one worked example.
 
-Use https://github.com/loobric/loobric-smooth as a reference implementation.
+Use https://github.com/loobric/loobric-cli as a reference implementation.
 Keep dependencies minimal.
 ```
 
@@ -223,7 +223,7 @@ To be listed, a client should:
 
 Then submit it either way:
 
-- **Open an issue** on [smooth-core](https://github.com/loobric/smooth-core/issues)
+- **Open an issue** on [loobric-server](https://github.com/loobric/loobric-server/issues)
   titled `Client listing: <name>`, **or**
 - **Email** [hello@loobric.com](mailto:hello@loobric.com).
 

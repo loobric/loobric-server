@@ -4,9 +4,9 @@ Two independent fixes are needed to make [ROUNDTRIP.md](./ROUNDTRIP.md) close
 cleanly:
 
 - **Fix 1** — FreeCAD's phantom "local is newer" after a download (ROUNDTRIP
-  steps 4–5). A baseline bug, contained to `smooth-freecad`.
+  steps 4–5). A baseline bug, contained to `loobric-freecad`.
 - **Fix 2** — the requested-member loop (ROUNDTRIP steps 5–10). A modeling gap
-  spanning `smooth-core` and `smooth-linuxcnc`.
+  spanning `loobric-server` and `loobric-linuxcnc`.
 
 They are separable; ship them independently.
 
@@ -21,13 +21,13 @@ steps 4 → 5.)
 
 ### Root cause
 The diff is a 3-way semantic compare of `local` / `base` / `regenerated`
-(`smooth-freecad/freecad/Smooth/sync.py:164-183`, `_classify`). With no base it
+(`loobric-freecad/freecad/Loobric/sync.py:164-183`, `_classify`). With no base it
 can only return `unchanged` or `conflict`; a real base is required to ever
 classify correctly.
 
 The two entity kinds get their base from **different places**:
 
-- **Sets** keep a local snapshot: `set_snapshots[set_id]` in `.smooth_state.json`
+- **Sets** keep a local snapshot: `set_snapshots[set_id]` in `.loobric_state.json`
   (`sync.py:255-280`), rewritten on every pull (`sync.py:777`). Sets are fine.
 - **Instances/bits** have **no local snapshot**. Their base is read back from the
   server's own section, `clients.freecad.data.fctb`, via `_base_fctb()` in
@@ -63,12 +63,12 @@ synced doc, so `_classify` yields `unchanged`. One apply, done.
 This is lane-safe: a client section can never touch `internal`/`canonical`
 (`tool_instance_records.py:172-203` rejects out-of-lane bodies). It bumps
 `row.version` (`tool_instance_records.py:202`), which is **harmless to
-smooth-linuxcnc** — its tool-table merge compares offsets and deliberately
-ignores version/metadata bumps (`_entry_offsets`, `smooth_linuxcnc.py:273-289`).
+loobric-linuxcnc** — its tool-table merge compares offsets and deliberately
+ignores version/metadata bumps (`_entry_offsets`, `loobric_linuxcnc.py:273-289`).
 
 ### Alternative (Option B — local instance snapshot)
 Mirror the set path: add `record_snapshots` (instance id → last-synced `.fctb`) to
-`.smooth_state.json`, write it in `pull_bit`, and prefer it over `_base_fctb` in
+`.loobric_state.json`, write it in `pull_bit`, and prefer it over `_base_fctb` in
 `plan_sync`. Choose this only if you want zero server writes on a pure read. It
 adds a second baseline mechanism; Option A reuses the one the server already has.
 
@@ -107,11 +107,11 @@ members are `requested`/`pending bind`.
 2. **`refresh from machine` replaces membership.** `set_members`
    (`tool_set_records.py:209-232`) overwrites the whole `members` list, so a
    refresh built from the machine's 17 entries drops the requested member.
-3. **The controller never sees the set.** `smooth-linuxcnc` GETs only
-   tool-table-entry records (`smooth_linuxcnc.py:647`); it has no notion of a
+3. **The controller never sees the set.** `loobric-linuxcnc` GETs only
+   tool-table-entry records (`loobric_linuxcnc.py:647`); it has no notion of a
    requested tool.
 
-### Server changes (smooth-core)
+### Server changes (loobric-server)
 
 **S1. `reconcile_set_membership(db, set_row) -> ReconcileResult`.**
 For each member of a machine-bound set, resolve `tool_record_id` (instance) →
@@ -152,10 +152,10 @@ agree; otherwise leave the proposal open for human confirmation.
 **S4. (Optional) Set inbox** for ambiguities from S1, analogous to the binding
 inbox. Not required for the happy path; required before relaxing S3's auto-confirm.
 
-### Controller changes (smooth-linuxcnc)
+### Controller changes (loobric-linuxcnc)
 
 **C1. Fetch the machine-bound set.** Add `GET /tool-set-records?machine_id=<id>`
-alongside the existing entries fetch (`smooth_linuxcnc.py:647`).
+alongside the existing entries fetch (`loobric_linuxcnc.py:647`).
 
 **C2. Compute requested tools.** Build the set of bound instance ids from the
 server entries already fetched (`entry.canonical.bound_instance_id.value`).
@@ -163,7 +163,7 @@ A set member is **requested** when its `tool_record_id` is not among them. (This
 reuses data the client already holds; no new server-side query needed.)
 
 **C3. Report, don't act.** Add a summary line and fold the count into the in-sync
-check (`smooth_linuxcnc.py:793-794`):
+check (`loobric_linuxcnc.py:793-794`):
 ```
 17 tools in sync, 1 tool requested: "1/4 ball endmill" — mount it and assign pocket 18
 ```
@@ -172,7 +172,7 @@ controller **never edits the `.tbl`** for a requested tool.
 
 **C4. Fulfilment is the existing path.** The operator mounts the tool and adds the
 `.tbl` line. On the next sync the new local tool has no server entry → the existing
-decision table pushes it via **merge** (`smooth_linuxcnc.py:661-689,707-708`),
+decision table pushes it via **merge** (`loobric_linuxcnc.py:661-689,707-708`),
 creating a new unbound entry, which triggers S3. The merge mode is essential here:
 it upserts without reconciling anything away. Between mount and bind, C2 reports the
 member as **pending bind** (instance now has an entry, not yet bound):

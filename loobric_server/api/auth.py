@@ -50,6 +50,36 @@ def get_solo_user(db: Session) -> User:
     return user
 
 
+def open_registration_enabled() -> bool:
+    """Whether non-first-user self-registration is open (LOOBRIC_OPEN_REGISTRATION=1).
+
+    Default is CLOSED (hardening decision, MCP_PLAN.md §5/§8, 2026-07-24):
+    once the first user exists, only an authenticated admin may create
+    accounts, so a self-hosted server on an exposed port is safe by default.
+    The public sandbox deliberately sets the flag — open registration is its
+    tester funnel. Checked at request time (not import time) so tests and
+    process managers can toggle it via the environment.
+    """
+    return os.getenv("LOOBRIC_OPEN_REGISTRATION", "").strip().lower() in ("1", "true", "yes")
+
+
+def session_cookie_secure(request: Optional[Request]) -> bool:
+    """Whether the session cookie should carry the Secure attribute.
+
+    LOOBRIC_COOKIE_SECURE forces it on ("1"/"true"/"yes") or off
+    ("0"/"false"/"no"). Unset means auto: Secure exactly when the request
+    arrived over https. Auto keeps plain-http LAN/solo logins working; a
+    hosted deployment behind a TLS terminator that doesn't forward the
+    protocol must set the env var explicitly (loobric-deploy does).
+    """
+    raw = os.getenv("LOOBRIC_COOKIE_SECURE", "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    if raw in ("0", "false", "no"):
+        return False
+    return request is not None and request.url.scheme == "https"
+
+
 # Request/Response models
 class UserRegister(BaseModel):
     """Request model for user registration."""
@@ -288,34 +318,55 @@ def _get_current_user_if_not_first(
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(
     user_data: UserRegister,
+    request: Request = None,
+    session: Annotated[str | None, Cookie()] = None,
+    authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_db)
 ):
     """Register a new user account.
-    
-    First user registration is open and creates an admin account.
-    All subsequent registrations are open and create standard user accounts.
-    
+
+    First user registration is ALWAYS open and creates an admin account.
+    After that, registration is closed by default: only an authenticated
+    admin may create accounts. LOOBRIC_OPEN_REGISTRATION=1 restores open
+    self-registration (the sandbox posture).
+
     Args:
         user_data: User registration data
+        request: FastAPI request object
+        session: Session ID from cookie (used only when registration is closed)
+        authorization: Authorization header (used only when registration is closed)
         db: Database session
-        
+
     Returns:
         UserResponse: Created user object
-        
+
     Raises:
-        HTTPException: 400 if email already exists
-        
+        HTTPException: 400 if email already exists; 401 if registration is
+            closed and the caller is unauthenticated; 403 if closed and the
+            caller is not an admin
+
     Assumptions:
-    - Public registration creates "user" role by default
-    - First user becomes admin automatically
+    - Registration creates "user" role by default; first user becomes admin
+    - Default posture is closed (open_registration_enabled() gate, 2026-07-24)
     - Admins can upgrade users to other roles via /api/v1/users/{id}/roles
     """
     from sqlalchemy.exc import IntegrityError
-    
+
     # Check if this is the first user
     user_count = db.query(User).count()
     is_first_user = user_count == 0
-    
+
+    # Closed registration (the default): after the first user, only an
+    # authenticated admin may create accounts.
+    if not is_first_user and not open_registration_enabled():
+        requester = require_auth(session=session, authorization=authorization,
+                                 db=db, request=request)
+        if not requester.is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Registration is closed; only an administrator may create accounts"
+            )
+
     try:
         user = create_user(
             session=db,
@@ -353,24 +404,27 @@ def register(
 def login(
     user_data: UserLogin,
     response: Response,
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
     """Login with email and password.
-    
+
     Args:
         user_data: Login credentials
         response: Response object to set cookie
+        request: FastAPI request object (scheme drives the Secure default)
         db: Database session
-        
+
     Returns:
         UserResponse: User object
-        
+
     Raises:
         HTTPException: 401 if credentials are invalid
-        
+
     Assumptions:
     - Sets session cookie on successful login
-    - Cookie is httponly and secure in production
+    - Cookie is httponly, samesite=lax; Secure per session_cookie_secure()
+      (forced by LOOBRIC_COOKIE_SECURE, else auto on https)
     """
     user = authenticate_user(
         session=db,
@@ -390,6 +444,7 @@ def login(
         key="session",
         value=session_id,
         httponly=True,
+        secure=session_cookie_secure(request),
         max_age=86400,  # 24 hours
         samesite="lax"
     )

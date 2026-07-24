@@ -5,38 +5,63 @@
 """
 Integration tests for user registration.
 
-Tests the open-registration model:
-- First user registration is open and creates an admin
-- Subsequent registrations are also open and create standard "user" accounts
-
-This is the deliberate posture for the public sandbox (api.loobric.com): anyone
-may create an account without an invite. The first user still becomes admin; no
-one after them does, and open registration grants no elevated rights.
+Tests the registration model (hardened 2026-07-24, MCP_PLAN.md §5):
+- First user registration is ALWAYS open and creates an admin
+- After the first user, registration is CLOSED by default: only an
+  authenticated admin may create accounts
+- LOOBRIC_OPEN_REGISTRATION=1 restores open self-registration (the deliberate
+  posture for the public sandbox at api.loobric.com, where open registration
+  is the tester funnel); new accounts are non-admin "user" either way
 
 Assumptions:
 - First user automatically becomes admin (is_admin=True, role="admin")
-- Anyone may register an account; new accounts are non-admin "user" by default
+- Default (flag unset): unauthenticated or non-admin registration after the
+  first user is rejected (401 without credentials, 403 for non-admin)
+- LOOBRIC_OPEN_REGISTRATION=1: anyone may register; grants no elevated rights
+- The flag is read at request time, so tests toggle it via monkeypatch
 """
 import pytest
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture
+def closed_registration(monkeypatch):
+    """Ensure the default posture: LOOBRIC_OPEN_REGISTRATION unset."""
+    monkeypatch.delenv("LOOBRIC_OPEN_REGISTRATION", raising=False)
+
+
+@pytest.fixture
+def open_registration(monkeypatch):
+    """The sandbox posture: LOOBRIC_OPEN_REGISTRATION=1."""
+    monkeypatch.setenv("LOOBRIC_OPEN_REGISTRATION", "1")
+
+
+def _register(client, email, password="password123", cookies=None):
+    return client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password},
+        cookies=cookies,
+    )
+
+
+def _login(client, email, password):
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert response.status_code == 200
+    return response.cookies
+
+
 @pytest.mark.integration
-def test_first_user_registration_is_open(client):
-    """Test that first user can register without authentication.
-    
+def test_first_user_registration_is_open(client, closed_registration):
+    """First user can register without authentication, even when closed.
+
     Assumptions:
-    - Empty database allows open registration
-    - No authentication required for first user
+    - Empty database allows open registration regardless of the flag
     - Returns 201 Created with user details
     """
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "first@example.com",
-            "password": "password123"
-        }
-    )
+    response = _register(client, "first@example.com")
     assert response.status_code == 201
     data = response.json()
     assert data["email"] == "first@example.com"
@@ -45,27 +70,17 @@ def test_first_user_registration_is_open(client):
 
 
 @pytest.mark.integration
-def test_first_user_becomes_admin(client, db_session):
-    """Test that first user automatically becomes admin.
-    
+def test_first_user_becomes_admin(client, db_session, closed_registration):
+    """First user automatically becomes admin.
+
     Assumptions:
-    - First user gets is_admin=True
-    - First user gets role="admin"
-    - This happens automatically without explicit request
+    - First user gets is_admin=True and role="admin" automatically
     """
     from loobric_server.database.schema import User
-    
-    # Register first user
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "admin@example.com",
-            "password": "password123"
-        }
-    )
+
+    response = _register(client, "admin@example.com")
     assert response.status_code == 201
-    
-    # Verify user is admin in database
+
     user = db_session.query(User).filter(User.email == "admin@example.com").first()
     assert user is not None
     assert user.is_admin is True
@@ -73,34 +88,85 @@ def test_first_user_becomes_admin(client, db_session):
 
 
 @pytest.mark.integration
-def test_second_user_registration_is_open(client):
-    """Test that a second user can register without authentication.
+def test_unauthenticated_second_registration_is_rejected_by_default(
+        client, closed_registration):
+    """Default posture: anonymous registration after the first user fails.
 
-    Open registration (the sandbox posture): once the first user exists,
-    anyone may still self-register. The new account is created as a non-admin
-    "user".
+    Assumptions:
+    - LOOBRIC_OPEN_REGISTRATION unset means closed
+    - No credentials -> 401 (authentication required)
+    """
+    _register(client, "first@example.com")
+
+    response = _register(client, "second@example.com")
+    assert response.status_code == 401
+
+
+@pytest.mark.integration
+def test_non_admin_cannot_register_users_by_default(client, db_session,
+                                                    closed_registration):
+    """Default posture: an authenticated non-admin cannot create accounts.
+
+    Assumptions:
+    - Closed registration is admin-only: authenticated non-admin -> 403
+    """
+    from loobric_server.database.schema import User
+    from loobric_server.auth.password import hash_password
+
+    _register(client, "admin@example.com", "admin123")
+
+    non_admin = User(
+        email="user@example.com",
+        password_hash=hash_password("user123"),
+        is_active=True,
+        is_admin=False,
+        role="user",
+        is_verified=True,
+    )
+    db_session.add(non_admin)
+    db_session.commit()
+
+    cookies = _login(client, "user@example.com", "user123")
+    response = _register(client, "newuser@example.com", cookies=cookies)
+    assert response.status_code == 403
+
+
+@pytest.mark.integration
+def test_admin_can_register_users_when_closed(client, db_session,
+                                              closed_registration):
+    """Default posture: an authenticated admin may create accounts.
+
+    Assumptions:
+    - Admin session auth satisfies the closed-registration gate
+    - The created account is a non-admin "user"
+    """
+    from loobric_server.database.schema import User
+
+    _register(client, "admin@example.com", "admin123")
+    cookies = _login(client, "admin@example.com", "admin123")
+
+    response = _register(client, "user@example.com", cookies=cookies)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["email"] == "user@example.com"
+    assert data["role"] == "user"
+
+    created = db_session.query(User).filter(User.email == "user@example.com").first()
+    assert created is not None
+    assert created.is_admin is False
+
+
+@pytest.mark.integration
+def test_second_user_registration_open_with_flag(client, open_registration):
+    """Sandbox posture: LOOBRIC_OPEN_REGISTRATION=1 allows anonymous signup.
 
     Assumptions:
     - Unauthenticated registration after the first user returns 201
     - The new account is a non-admin "user"
     """
-    # Create first user (admin)
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "first@example.com",
-            "password": "password123"
-        }
-    )
+    _register(client, "first@example.com")
 
-    # Register a second user with no authentication — allowed.
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "second@example.com",
-            "password": "password123"
-        }
-    )
+    response = _register(client, "second@example.com")
     assert response.status_code == 201
     data = response.json()
     assert data["email"] == "second@example.com"
@@ -108,159 +174,53 @@ def test_second_user_registration_is_open(client):
 
 
 @pytest.mark.integration
-def test_non_admin_can_register_users(client, db_session):
-    """Test that a non-admin user can also register new accounts.
-
-    Open registration grants no elevated rights — a logged-in non-admin can
-    register another account exactly as an anonymous visitor can, and the
-    created account is a non-admin "user".
+def test_open_registration_grants_no_elevated_rights(client, db_session,
+                                                     open_registration):
+    """Sandbox posture: a non-admin can register accounts; all stay non-admin.
 
     Assumptions:
-    - A non-admin (authenticated) registration returns 201
-    - The created account is a non-admin "user"
+    - With the flag set, a logged-in non-admin registers exactly as an
+      anonymous visitor can; the created account is a non-admin "user"
     """
     from loobric_server.database.schema import User
     from loobric_server.auth.password import hash_password
 
-    # Create first user (admin)
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "admin@example.com",
-            "password": "admin123"
-        }
-    )
+    _register(client, "admin@example.com", "admin123")
 
-    # Manually create a non-admin user in the test database
     non_admin = User(
         email="user@example.com",
         password_hash=hash_password("user123"),
         is_active=True,
         is_admin=False,
         role="user",
-        is_verified=True
+        is_verified=True,
     )
     db_session.add(non_admin)
     db_session.commit()
 
-    # Login as non-admin and get cookies
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": "user@example.com",
-            "password": "user123"
-        }
-    )
-    assert login_response.status_code == 200
-
-    # Extract cookies from login response
-    cookies = login_response.cookies
-
-    # Register a new account as the non-admin — allowed under open registration.
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "newuser@example.com",
-            "password": "password123"
-        },
-        cookies=cookies
-    )
+    cookies = _login(client, "user@example.com", "user123")
+    response = _register(client, "newuser@example.com", cookies=cookies)
     assert response.status_code == 201
-    data = response.json()
-    assert data["email"] == "newuser@example.com"
-    assert data["role"] == "user"
+    assert response.json()["role"] == "user"
 
-    # And it is genuinely non-admin in the database.
     created = db_session.query(User).filter(User.email == "newuser@example.com").first()
     assert created is not None
     assert created.is_admin is False
-    assert created.role == "user"
 
 
 @pytest.mark.integration
-def test_admin_can_register_additional_users(client):
-    """Test that admin users can register additional users.
-    
-    Assumptions:
-    - Admin users can register new users
-    - Authentication via session cookie works
-    - Returns 201 Created for successful registration
-    """
-    # Register and login as admin (first user)
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "admin@example.com",
-            "password": "admin123"
-        }
-    )
-    
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": "admin@example.com",
-            "password": "admin123"
-        }
-    )
-    assert login_response.status_code == 200
-    
-    # Extract cookies from login response
-    cookies = login_response.cookies
-    
-    # Register second user as admin (with cookies)
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "password123"
-        },
-        cookies=cookies
-    )
-    assert response.status_code == 201
-    data = response.json()
-    assert data["email"] == "user@example.com"
+def test_subsequent_users_are_not_admin(client, db_session, closed_registration):
+    """Users registered by an admin are not automatically admin.
 
-
-@pytest.mark.integration
-def test_subsequent_users_are_not_admin(client, db_session):
-    """Test that users registered by admin are not automatically admin.
-    
     Assumptions:
-    - Only first user becomes admin automatically
-    - Users registered by admin have is_admin=False by default
+    - Only the first user becomes admin automatically
     """
     from loobric_server.database.schema import User
-    
-    # Register first user (becomes admin)
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "admin@example.com",
-            "password": "admin123"
-        }
-    )
-    
-    # Login as admin
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": "admin@example.com",
-            "password": "admin123"
-        }
-    )
-    cookies = login_response.cookies
-    
-    # Register second user (with cookies)
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "password123"
-        },
-        cookies=cookies
-    )
-    
-    # Verify second user is not admin
+
+    _register(client, "admin@example.com", "admin123")
+    cookies = _login(client, "admin@example.com", "admin123")
+    _register(client, "user@example.com", cookies=cookies)
+
     user = db_session.query(User).filter(User.email == "user@example.com").first()
     assert user is not None
     assert user.is_admin is False
@@ -268,41 +228,17 @@ def test_subsequent_users_are_not_admin(client, db_session):
 
 
 @pytest.mark.integration
-def test_duplicate_email_registration_fails(client):
-    """Test that registering with duplicate email fails.
-    
+def test_duplicate_email_registration_fails(client, closed_registration):
+    """Registering a duplicate email fails with 400.
+
     Assumptions:
     - Email addresses must be unique
-    - Returns 400 Bad Request for duplicate email
-    - Error message indicates email already registered
+    - The admin gate is passed (admin session) so the duplicate check is hit
     """
-    # Register first user
-    client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "password123"
-        }
-    )
-    
-    # Login as admin
-    login_response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": "user@example.com",
-            "password": "password123"
-        }
-    )
-    cookies = login_response.cookies
-    
-    # Try to register with same email (with cookies)
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "user@example.com",
-            "password": "different_password"
-        },
-        cookies=cookies
-    )
+    _register(client, "user@example.com")
+    cookies = _login(client, "user@example.com", "password123")
+
+    response = _register(client, "user@example.com", "different_password",
+                         cookies=cookies)
     assert response.status_code == 400
     assert "already registered" in response.json()["detail"].lower()

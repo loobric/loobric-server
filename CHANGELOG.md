@@ -3,6 +3,28 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.4.0] — 2026-07-24
+
+### Changed (behavior)
+- **Registration is closed by default.** The first user still registers openly
+  (and becomes admin); after that, creating accounts requires an authenticated
+  admin (401 unauthenticated, 403 non-admin). Set
+  `LOOBRIC_OPEN_REGISTRATION=1` to restore open self-registration — the
+  deliberate posture for the public sandbox, whose deploy config sets it. A
+  self-hosted server on an exposed port is now safe by default.
+  (MCP_PLAN.md §5, hardening ahead of the MCP launch.)
+
+### Added
+- **Session cookie `Secure` flag.** `LOOBRIC_COOKIE_SECURE=1`/`=0` forces it
+  on/off; unset means auto — Secure exactly when the request arrived over
+  https. Plain-http LAN/solo logins keep working; deployments behind a TLS
+  terminator set the env var (loobric-deploy does).
+- **Glossary: the agent vocabulary.** `docs/UBIQUITOUS_LANGUAGE.md` gains the
+  **Agent (provenance actor)** entry (`asserted:<agent>@mcp`; agents assert,
+  never observe), loosens **Client** to "any program that talks to a Loobric
+  Server through the Public API" (the sync invariant is now stated as a
+  property of the sync door), and adds the **Loobric MCP server** product row.
+
 ## [0.3.6] — 2026-06-29
 
 ### Fixed

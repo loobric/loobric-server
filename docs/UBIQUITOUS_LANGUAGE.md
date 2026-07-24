@@ -60,10 +60,14 @@ Public, normative (full detail in `TOOL_SCHEMA.md` §4–5). Every `canonical` l
 provenance-tagged field `{ value, source }`. `source` kind is one of **`observed`** (a machine
 measured it), **`asserted`** (a human/client declared it), **`derived`** (computed from other
 canonical fields), or **`unknown`** (nobody stated it → `value` MUST be null). Canonical changes
-only through three doors: **sync** (a client writes only its own `clients.<name>` section — the
-only thing most clients do; physically cannot touch `internal`/`canonical`), **observe** (a
-machine reports a measured value), **assert** (an explicit, audited declaration). Routine sync is
-*not* a canonical-mutating door — that is enforced with a `400`, not a convention.
+only through three doors: **sync** (the sync door writes only the caller's own `clients.<name>`
+section — the only thing most clients do; it physically cannot touch `internal`/`canonical`),
+**observe** (a machine reports a measured value), **assert** (an explicit, audited declaration).
+Routine sync is *not* a canonical-mutating door — that is enforced with a `400`, not a convention.
+
+| Term | Definition |
+|------|------------|
+| **Agent (provenance actor)** | An AI agent acting through the Loobric MCP server. Its writes go through the create/assert doors with actor **`<agent>@mcp`** (e.g. `asserted:claude@mcp`; the *who* comes from the MCP host's config, default `agent`) — the same `who@where` grammar as the CLI's `human@cli`, no new provenance kind. **Agents assert, never observe** — permanent principle with a determinism line: `observed` requires a deterministic pipeline from measurement to value, so an LLM in the loop means assert (deterministic importer code an agent merely invokes may observe). On the agent channel, asserts never overwrite an `observed` value (the MCP server refuses before the request); agents cannot delete, confirm/reject Inbox items, or bind/unbind. (MCP_PLAN.md, grilled 2026-07-24.) |
 
 ### Catalog records — authoring (M2)
 
@@ -130,7 +134,8 @@ messages. They never appear in user-facing prose, client UI, or the published AP
 | **Loobric** | The company/organization and brand (loobric.com, GitHub org). Not the product name. |
 | **Loobric** | The product: an open-core tool data synchronization system. |
 | **Loobric Server** | The central REST API + database server (`loobric-server`). The thing clients talk to. Licensed AGPL-3.0 (relicensed from Elastic 2.0 on 2026-06-09, decision G6). |
-| **Client** | Any program that synchronizes tool data with a Loobric Server server: `loobric-freecad`, `loobric-linuxcnc`, the `loobric.py` CLI, or third-party integrations. Clients are MIT-licensed reference implementations. |
+| **Client** | Any program that talks to a Loobric Server through the Public API: the syncing clients (`loobric-freecad`, `loobric-linuxcnc`), the `loobric` CLI, the Loobric MCP server, or third-party integrations. (Definition loosened from "synchronizes tool data" 2026-07-24, MCP grill decision #7 — the sync invariant is a property of the **sync door**, not of clients-as-a-category.) First-party clients are MIT-licensed reference implementations. |
+| **Loobric MCP server** | `loobric-mcp` (shipped from the loobric-cli repo, `pip install 'loobric-cli[mcp]'`): a stdio MCP server that lets AI agents on any MCP host read and write tool data through the public doors, under the **Agent (provenance actor)** rules above. A client that acts rather than syncs — it owns no `clients.<name>` section. |
 | **Loobric Web** | The hosted web application. The v1 app (`loobric-web`, app.loobric.com) is retired; a v2 rebuild on the Public API is scoped in M3. Part of the commercial offering, not the open core. ⚠️ Boundary with the core **Web UI** (`/ui`, see Server Surfaces) is undecided: M3 scope (account/key management, audit browsing, backup/restore, admin) is currently slated for the core Web UI — decide which features are open `/ui` vs commercial Loobric Web before M3 starts. |
 
 ## Domain Concepts — Tools

@@ -461,3 +461,45 @@ def test_assert_sets_nominal_fields_with_asserted_provenance(solo_client):
     doc = conforms(solo_client.get(f"{BASE}/{rid}").json())     # round-trips via GET
     dia = doc["canonical"]["geometry"]["diameter"]
     assert dia["value"] == 6.35 and dia["source"] == "asserted:catalog-import"
+
+
+# -- delete -------------------------------------------------------------------
+
+@pytest.mark.contract
+def test_delete_removes_the_record_and_writes_an_audit_row(solo_client,
+                                                           db_session):
+    """DELETE removes the catalog record and leaves one DELETE audit row —
+    the human door the MCP channel deliberately does not have."""
+    rid = seed(solo_client)["internal"]["id"]
+    r = solo_client.delete(f"{BASE}/{rid}")
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == rid
+    assert solo_client.get(f"{BASE}/{rid}").status_code == 404
+    rows = db_session.query(AuditLog).filter_by(
+        entity_type="tool_catalog_record", entity_id=rid,
+        operation="DELETE").all()
+    assert len(rows) == 1
+
+
+@pytest.mark.contract
+def test_delete_dissolves_instance_links_but_keeps_the_instances(solo_client):
+    """Instances created from the catalog record survive its deletion — the
+    physical tool outlives the catalog page. Only the catalog_type_id link is
+    dissolved (nulled with unknown source); nothing cascades."""
+    rid = seed(solo_client)["internal"]["id"]
+    iids = [solo_client.post(f"{BASE}/{rid}/create-instance",
+                             json={}).json()["internal"]["id"]
+            for _ in range(2)]
+    r = solo_client.delete(f"{BASE}/{rid}")
+    assert r.status_code == 200
+    assert r.json()["instances_unlinked"] == 2
+    for iid in iids:
+        doc = solo_client.get(f"{INSTANCE_BASE}/{iid}").json()
+        link = doc["canonical"]["catalog_type_id"]
+        assert link["value"] is None
+        assert link["source"] == "unknown"
+
+
+@pytest.mark.contract
+def test_delete_unknown_id_is_404(solo_client):
+    assert solo_client.delete(f"{BASE}/no-such-record").status_code == 404

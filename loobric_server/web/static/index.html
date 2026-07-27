@@ -505,6 +505,12 @@ async function deleteEntry(id){
 async function deleteSet(id){ const s=state.toolsets.find(x=>rid(x)===id);
   if(!(await confirmDialog(`Delete tool set "${cf(s,"name")||id.slice(0,8)}"? The tools are not deleted.`))) return;
   try{ await api("DELETE","/tool-set-records/"+id); if(state.setSel===id) state.setSel=null; toast("Deleted set."); refresh(); }catch(e){ toast(e.message); } }
+async function deleteCatalog(id){ const c=state.catalogs.find(x=>rid(x)===id);
+  const made=instancesFromCatalog(id).length;
+  const extra=made?` ${made} tool${made===1?"":"s"} created from it ${made===1?"is":"are"} kept — only the catalog link is dissolved.`:"";
+  if(!(await confirmDialog(`Delete catalog record "${cf(c,"name")||id.slice(0,8)}"?${extra}`))) return;
+  try{ const r=await api("DELETE","/tool-catalog-records/"+id); if(state.catalogSel===id) state.catalogSel=null;
+    toast(r.instances_unlinked?`Deleted catalog record (${r.instances_unlinked} tool${r.instances_unlinked===1?"":"s"} unlinked).`:"Deleted catalog record."); refresh(); }catch(e){ toast(e.message); } }
 
 // ---- tool set from a machine (orchestrates existing canonical doors) --------
 function _boundInstances(machineId){
@@ -859,7 +865,7 @@ function backToCatalog(){ state.catalogSel=null; render(); }
 
 function renderCatalog(){
   if(state.catalogSel) return renderCatalogDetail();
-  if(!state.catalogs.length) return `<div class="empty">No catalog records yet.<br><span class="muted">Author them with the loobric_server CLI (create-catalog-record); this surface is read-only.</span></div>`;
+  if(!state.catalogs.length) return `<div class="empty">No catalog records yet.<br><span class="muted">Author them with the loobric CLI (create-catalog-record) or an importer (loobric import).</span></div>`;
   const explain = `<div class="explain">Published catalog specs &mdash; nominal, <b>asserted</b> data. Open one to see every field beside the <b>source</b> that vouches for it, so a manufacturer's claim reads differently from a real measurement.</div>`;
   return explain + state.catalogs.map(c=>{
     const name=cf(c,"name"), mfr=cf(c,"manufacturer"), pc=cf(c,"product_code");
@@ -870,6 +876,7 @@ function renderCatalog(){
       <div class="row" style="margin-top:.6rem"><span class="muted">catalog record</span>
         <span class="rowact">
           <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button>
+          <button class="unbind" onclick="deleteCatalog('${rid(c)}')">Delete</button>
         </span></div>
     </div>`;
   }).join("");
@@ -890,7 +897,8 @@ function renderCatalogDetail(){
   return `<div class="row" style="margin-bottom:.6rem">
       <button class="mini link" onclick="backToCatalog()">&#x2190; Back to catalog</button>
       <span class="rowact">
-        <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button></span></div>
+        <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button>
+        <button class="unbind" onclick="deleteCatalog('${rid(c)}')">Delete</button></span></div>
     <div class="card">
       <div class="row"><strong>${esc(cf(c,"name")||"(unnamed)")}</strong>${idLink(rid(c),0)}</div>
       ${made?`<div class="muted" style="margin-top:.3rem">${made} tool${made===1?"":"s"} created from this catalog record.</div>`:""}

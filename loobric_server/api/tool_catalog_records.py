@@ -290,6 +290,41 @@ def get_catalog(record_id: str, db: Session = Depends(get_db),
     return _response(row)
 
 
+@router.delete("/{record_id}")
+def delete_catalog_record(record_id: str, db: Session = Depends(get_db),
+                          user: User = Depends(get_authenticated_user)):
+    """Delete a catalog record. Instances created from it are KEPT — the
+    physical tool outlives its catalog page — with their `catalog_type_id`
+    link dissolved (nulled, source unknown), mirroring how deleting an
+    instance unbinds its entry. Nothing cascades; every touched record gets
+    its own audit row. This is a human door (Web UI / CLI): the MCP channel
+    deliberately has no delete tools."""
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    unlinked = 0
+    for inst in db.query(InstanceRow).filter(
+            InstanceRow.user_id == user.id,
+            InstanceRow.catalog_type_id == record_id).all():
+        canon = dict(inst.canonical)
+        canon["catalog_type_id"] = {"value": None, "source": UNKNOWN}
+        inst.canonical = canon
+        inst.catalog_type_id = None
+        inst.version += 1
+        inst.updated_by = user.id
+        create_audit_log(session=db, user_id=user.id, operation="UPDATE",
+                         entity_type="tool_instance_record",
+                         entity_id=inst.id,
+                         changes={"path": "catalog_type_id",
+                                  "reason": "catalog record deleted"})
+        unlinked += 1
+    db.delete(row)
+    create_audit_log(session=db, user_id=user.id, operation="DELETE",
+                     entity_type="tool_catalog_record", entity_id=record_id)
+    db.commit()
+    return {"deleted": record_id, "instances_unlinked": unlinked}
+
+
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),

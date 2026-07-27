@@ -3,6 +3,28 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.5.0] — 2026-07-27
+
+### Added
+- **`DELETE /api/v1/tool-catalog-records/{id}`** — catalog records get the
+  delete door every other entity already had. Instances created from the
+  record are **kept** — the physical tool outlives its catalog page — with
+  their `catalog_type_id` link dissolved (nulled, source `unknown`),
+  mirroring how deleting an instance unbinds its entries. Nothing cascades;
+  the response reports `instances_unlinked`; every touched record gets its
+  own audit row. This is a human door (Web UI / CLI): the MCP channel
+  deliberately has no delete tools.
+- **Web UI: delete catalog records.** A Delete button on each catalog card
+  and on the detail view, with a confirm that states how many tools created
+  from the record will be kept and unlinked.
+
+### Fixed
+- `pyproject.toml` version had been left at 0.3.6 while `version.py` said
+  0.4.0 — re-aligned; both now single-source 0.5.0.
+- Web UI: the empty-catalog hint named a nonexistent "loobric_server CLI"
+  and claimed the surface was read-only; it now points at `loobric
+  create-catalog-record` and `loobric import`.
+
 ## [0.4.0] — 2026-07-24
 
 ### Changed (behavior)

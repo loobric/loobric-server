@@ -3,6 +3,23 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.6.1] — 2026-07-27
+
+### Added
+- **`docs/SECURITY_ASSUMPTIONS.md`** — every security assumption mapped to
+  the test that proves it, with the standing rule that a new assumption
+  lands with its row and its test in the same commit; plus the ranked
+  not-yet-covered list (rate limiting doesn't exist; CSRF untested) and the
+  condensed post-mortem of how unenforced scopes shipped.
+- **Security tests that were missing from 0.6.0's own suite**: the bind
+  door (agent key 403s on bind/unbind/Inbox confirm/reject), negative sync
+  (read-only key cannot write client sections), the admin door (a
+  full-preset key cannot reach reset/wipe/backup), and — first ever —
+  **cross-account isolation over HTTP**: a second user, via session and via
+  a fully-scoped key, gets 404s and empty listings for another account's
+  records across all five entities. All passed on first run: the code was
+  correct but unproven.
+
 ## [0.6.0] — 2026-07-27
 
 ### ⚠️ BREAKING: API key scopes are now enforced — legacy keys become READ-ONLY

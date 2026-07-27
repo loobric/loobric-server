@@ -3,6 +3,22 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.5.1] — 2026-07-27
+
+### Added
+- **Web UI: client sections are now visible.** The catalog detail view gains
+  a **Client data** section showing what each client recorded in its own
+  section — importer source attributes, agent caveats ("part number
+  unconfirmed"), prices, source URLs — verbatim, outside the canonical spec.
+  Until now this data was stored but invisible except in the raw schema
+  JSON, which mattered the moment `client_data` became the designated home
+  for provenance-critical caveats (loobric-cli 1.1.1+): an agent's warning
+  nobody can see protects nobody.
+
+### Fixed
+- Web UI copy still named the CLI `loobric_server` in four places (API-keys
+  explainer, empty-set hint); it is `loobric`.
+
 ## [0.5.0] — 2026-07-27
 
 ### Added

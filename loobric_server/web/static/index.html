@@ -583,7 +583,7 @@ async function removeMember(setId, toolId){
   const tname=state.toolNames[toolId]||toolId.slice(0,8);
   if(!(await confirmDialog(`Remove "${tname}" from "${cf(s,"name")||setId.slice(0,8)}"? The tool itself isn't deleted.`))) return;
   // Read-modify-write over the replace-only members door (the same move as
-  // `loobric_server remove-from-set`): keep every other member and its number, drop this one.
+  // `loobric remove-from-set`): keep every other member and its number, drop this one.
   const members=(s.canonical.members||[])
     .filter(m=>m.tool_record_id!==toolId)
     .map(m=>({tool_record_id:m.tool_record_id, number:(m.number||{}).value}));
@@ -623,7 +623,7 @@ function renderToolSetDetail(){
       <span class="fval"><strong>${esc(tname)}</strong>${shape?` <span class="muted">${esc(shape)}</span>`:""}${dia!=null?` <span class="muted">&#x2300;${dia}</span>`:""} ${idLink(tid)}</span>
       <button class="mini del" onclick="removeMember('${rid(s)}','${tid}')">Remove</button>
     </div>`;
-  }).join("") : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric_server add-to-set</code>.</div>`;
+  }).join("") : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric add-to-set</code>.</div>`;
   return `<div class="row" style="margin-bottom:.6rem">
       <button class="mini link" onclick="backToToolSets()">&#x2190; Back to tool sets</button>
       <span class="rowact">
@@ -860,6 +860,26 @@ function catalogField(label, leaf){
   return `<div class="frow"><span class="flabel">${esc(label)}</span>`+
          `<span class="fval">${val}</span>${provBadge(src)}</div>`;
 }
+// Per-client sections rendered on a record's detail view. This is where a
+// client parks source data that has no canonical home yet — an importer's raw
+// attributes, an agent's caveats ("part number unconfirmed"), prices, source
+// URLs. Hidden data here misled nobody only because nobody could see it.
+function clientSections(rec){
+  const cls = rec.clients || {}; const names = Object.keys(cls);
+  if(!names.length) return "";
+  const secs = names.map(n=>{
+    const sec = cls[n] || {}; const data = sec.data || {};
+    const rows = Object.entries(data).map(([k,v])=>
+      `<div class="frow"><span class="flabel">${esc(k.replace(/_/g," "))}</span>`+
+      `<span style="word-break:break-all;text-align:right">${esc(typeof v==="object"?JSON.stringify(v):String(v))}</span></div>`).join("");
+    const ver = sec.client_version ? ` <span class="muted">v${esc(sec.client_version)}</span>` : "";
+    return `<div style="margin-top:.4rem"><div class="muted"><b>${esc(n)}</b>${ver}</div>`+
+           (rows || `<div class="muted" style="padding:.45rem 0">no data</div>`)+`</div>`;
+  }).join("");
+  return `<div class="section-h">Client data</div>
+    <div class="explain">What each client recorded about this item in its own section
+    &mdash; source details, caveats, prices &mdash; kept verbatim, outside the canonical spec.</div>` + secs;
+}
 function openCatalog(id){ state.tab="catalog"; state.catalogSel=id; render(); }
 function backToCatalog(){ state.catalogSel=null; render(); }
 
@@ -909,6 +929,7 @@ function renderCatalogDetail(){
       <div class="section-h">Identity</div>${idRows}
       <div class="section-h">Geometry</div>${geomRows}
       ${mediaSection(c,"tool-catalog-records")}
+      ${clientSections(c)}
     </div>`;
 }
 
@@ -965,7 +986,7 @@ async function submitCreateFromCatalog(){
 
 // ---- Account: API keys + change password -----------------------------------
 // The browser session authenticates this page; API keys are for non-browser
-// clients (the loobric_server CLI, FreeCAD, LinuxCNC). A new key's plain value is shown
+// clients (the loobric CLI, FreeCAD, LinuxCNC). A new key's plain value is shown
 // ONCE at creation (the server only stores its hash), so the create flow reveals
 // it for copying and never again.
 function renderAccount(){
@@ -995,7 +1016,7 @@ function renderAccount(){
       <div class="row"><strong>API keys</strong>
         <button class="mini create" onclick="openNewKey()">New key</button></div>
       <div class="explain" style="margin-top:.6rem">API keys authenticate non-browser
-        clients (the <code>loobric_server</code> CLI, FreeCAD, LinuxCNC). A key is shown
+        clients (the <code>loobric</code> CLI, FreeCAD, LinuxCNC). A key is shown
         <b>once</b> at creation &mdash; copy it then. Revoking takes effect immediately.</div>
       ${keyRows}
     </div>

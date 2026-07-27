@@ -52,7 +52,7 @@ def test_create_api_key(client, disable_auth):
         "/api/v1/auth/keys",
         json={
             "name": "Test Key",
-            "scopes": ["read", "write:items"],
+            "scopes": ["read", "sync", "assert"],
             "expires_at": None,
             "machine_id": None
         }
@@ -64,7 +64,7 @@ def test_create_api_key(client, disable_auth):
     assert data["name"] == "Test Key"
     assert "scopes" in data
     assert "read" in data["scopes"]
-    assert "write:items" in data["scopes"]
+    assert "assert" in data["scopes"]
     assert "key" in data  # Only returned on creation
 
 
@@ -215,7 +215,7 @@ def test_machine_specific_key_access(client, disable_auth):
         "/api/v1/auth/keys",
         json={
             "name": "Mill-01 Key",
-            "scopes": ["read", "write:presets"],
+            "scopes": ["read", "sync", "observe"],
             "machine_id": "mill-01"
         }
     )

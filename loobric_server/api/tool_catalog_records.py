@@ -20,13 +20,14 @@ import copy
 from datetime import datetime, UTC
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from loobric_server.api import _media
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.api.tool_instance_records import _response as _instance_response
 from loobric_server.database.schema import (
     User, ToolCatalogRecord as Row, ToolInstanceRecord as InstanceRow,
@@ -208,7 +209,7 @@ class CreateInstanceRequest(BaseModel):
 
 @router.post("")
 def create_catalog_record(req: CreateRequest, db: Session = Depends(get_db),
-                          user: User = Depends(get_authenticated_user)):
+                          user: User = Depends(door("assert"))):
     """Seeded, atomic create of a catalog type. The request carries one declared
     `actor` plus nominal {value, unit} fields; the server stamps asserted:<actor>
     as each field's source (lane discipline — the client never writes
@@ -276,14 +277,14 @@ def create_catalog_record(req: CreateRequest, db: Session = Depends(get_db),
 
 @router.get("")
 def list_catalogs(db: Session = Depends(get_db),
-                  user: User = Depends(get_authenticated_user)):
+                  user: User = Depends(door("read"))):
     rows = db.query(Row).filter(Row.user_id == user.id).order_by(Row.created_at).all()
     return {"items": [_response(r) for r in rows]}
 
 
 @router.get("/{record_id}")
 def get_catalog(record_id: str, db: Session = Depends(get_db),
-                user: User = Depends(get_authenticated_user)):
+                user: User = Depends(door("read"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -292,7 +293,7 @@ def get_catalog(record_id: str, db: Session = Depends(get_db),
 
 @router.delete("/{record_id}")
 def delete_catalog_record(record_id: str, db: Session = Depends(get_db),
-                          user: User = Depends(get_authenticated_user)):
+                          user: User = Depends(door("delete"))):
     """Delete a catalog record. Instances created from it are KEPT — the
     physical tool outlives its catalog page — with their `catalog_type_id`
     link dissolved (nulled, source unknown), mirroring how deleting an
@@ -328,7 +329,7 @@ def delete_catalog_record(record_id: str, db: Session = Depends(get_db),
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("sync"))):
     """Routine sync: write THIS client's section. The client is named by the
     path; the body is the envelope (`client_version`, `client_item_id`) + opaque
     `data`. A body carrying `internal`/`canonical`/stray keys is a 400."""
@@ -362,7 +363,7 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/assert")
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
-                     user: User = Depends(get_authenticated_user)):
+                     user: User = Depends(door("assert"))):
     """Deliberately declare a nominal canonical value (name, manufacturer,
     product_code, a published geometry dimension). Rare, audited. Stamps source
     asserted:<actor>. This is the ONLY door into a catalog type's canonical — a
@@ -395,7 +396,7 @@ def assert_canonical(record_id: str, req: AssertRequest,
 async def upload_media(record_id: str, file: UploadFile = File(...),
                        role: str = Form(...), actor: str = Form("catalog-import"),
                        db: Session = Depends(get_db),
-                       user: User = Depends(get_authenticated_user)):
+                       user: User = Depends(door("assert"))):
     """Attach a media file (3D model, drawing, image, logo) to this catalog type.
     The bytes go to the content-addressed blob store; canonical.media gains a
     provenance-tagged reference the server stamps asserted:<actor> (the client
@@ -422,7 +423,7 @@ async def upload_media(record_id: str, file: UploadFile = File(...),
 
 @router.get("/{record_id}/media/{ref:path}")
 def get_media(record_id: str, ref: str, db: Session = Depends(get_db),
-              user: User = Depends(get_authenticated_user)):
+              user: User = Depends(door("read"))):
     """Stream a referenced media file's bytes (the blob the record points at)."""
     row = _owned(db, user, record_id)
     if row is None:
@@ -433,7 +434,7 @@ def get_media(record_id: str, ref: str, db: Session = Depends(get_db),
 @router.delete("/{record_id}/media/{ref:path}")
 def delete_media(record_id: str, ref: str, actor: str = "catalog-import",
                  db: Session = Depends(get_db),
-                 user: User = Depends(get_authenticated_user)):
+                 user: User = Depends(door("delete"))):
     """Drop a media reference from this record. The blob bytes stay in the store
     (content-addressed, possibly shared); blob GC is a separate concern."""
     row = _owned(db, user, record_id)
@@ -453,8 +454,9 @@ def delete_media(record_id: str, ref: str, actor: str = "catalog-import",
 
 @router.post("/{record_id}/create-instance")
 def create_instance_from_catalog(record_id: str, req: CreateInstanceRequest,
+                                 request: Request = None,
                                  db: Session = Depends(get_db),
-                                 user: User = Depends(get_authenticated_user)):
+                                 user: User = Depends(door("assert"))):
     """Create a new physical ToolInstanceRecord from this catalog type — a
     deliberate, audited door (parallel to an entry bind, but sourced from a
     catalog type and left UNBOUND: a catalog is not a machine position).
@@ -479,6 +481,15 @@ def create_instance_from_catalog(record_id: str, req: CreateInstanceRequest,
 
     qa = req.qa or {}
     cert = (req.cert or "").strip()
+    if qa and request is not None:
+        # QA writes observed:manufacturer@… — an observe-door act inside a
+        # create endpoint, so it additionally requires the observe scope
+        # (SCOPES_PLAN §3 Q3). Without this, an assert-only key could smuggle
+        # measured values through a create. `request` is None only for
+        # internal server-side calls (seed-demo), which are not a scoped
+        # principal.
+        from loobric_server.auth.doors import check_doors
+        check_doors(request, ("observe",))
     if qa and not cert:
         raise HTTPException(
             status_code=400,

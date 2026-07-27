@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from loobric_server.api import _media
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.database.schema import User, ToolInstanceRecord as Row
 from loobric_server.audit import create_audit_log
 from loobric_server.contract import (
@@ -132,7 +133,7 @@ class ObserveRequest(BaseModel):
 
 @router.post("")
 def create_instance(payload: CreateRequest, db: Session = Depends(get_db),
-                    user: User = Depends(get_authenticated_user)):
+                    user: User = Depends(door("assert"))):
     """Mint a physical-tool instance. Canonical starts all-unknown; an optional
     initial client section may be seeded. Canonical is populated only via the
     observe/assert doors thereafter."""
@@ -156,14 +157,14 @@ def create_instance(payload: CreateRequest, db: Session = Depends(get_db),
 
 @router.get("")
 def list_instances(db: Session = Depends(get_db),
-                   user: User = Depends(get_authenticated_user)):
+                   user: User = Depends(door("read"))):
     rows = db.query(Row).filter(Row.user_id == user.id).order_by(Row.created_at).all()
     return {"items": [_response(r) for r in rows]}
 
 
 @router.get("/{record_id}")
 def get_instance(record_id: str, db: Session = Depends(get_db),
-                 user: User = Depends(get_authenticated_user)):
+                 user: User = Depends(door("read"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -173,7 +174,7 @@ def get_instance(record_id: str, db: Session = Depends(get_db),
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("sync"))):
     """Routine sync: write THIS client's section. The client is named by the
     path; the body is the envelope (`client_version`, `client_item_id`) + opaque
     `data`. A body carrying `internal`/`canonical`/stray keys is a 400."""
@@ -207,7 +208,7 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/assert")
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
-                     user: User = Depends(get_authenticated_user)):
+                     user: User = Depends(door("assert"))):
     """Deliberately declare a canonical value (shape, a nominal dimension, the
     catalog-type link). Rare, audited. Stamps source asserted:<actor>."""
     row = _owned(db, user, record_id)
@@ -232,7 +233,7 @@ def assert_canonical(record_id: str, req: AssertRequest,
 
 @router.delete("/{record_id}")
 def delete_instance(record_id: str, db: Session = Depends(get_db),
-                    user: User = Depends(get_authenticated_user)):
+                    user: User = Depends(door("delete"))):
     """Delete a tool instance. Any entry holding it is UNBOUND first (the entry
     keeps its observed data; only the install link dies) — never orphaned."""
     row = _owned(db, user, record_id)
@@ -261,7 +262,7 @@ def delete_instance(record_id: str, db: Session = Depends(get_db),
 async def upload_media(record_id: str, file: UploadFile = File(...),
                        role: str = Form(...), actor: str = Form("human@cli"),
                        db: Session = Depends(get_db),
-                       user: User = Depends(get_authenticated_user)):
+                       user: User = Depends(door("assert"))):
     """Attach a media file (e.g. an as-built 3D scan, a photo) to this physical
     instance. Bytes go to the blob store; canonical.media gains a reference the
     server stamps asserted:<actor>. The server does not parse the file."""
@@ -286,7 +287,7 @@ async def upload_media(record_id: str, file: UploadFile = File(...),
 
 @router.get("/{record_id}/media/{ref:path}")
 def get_media(record_id: str, ref: str, db: Session = Depends(get_db),
-              user: User = Depends(get_authenticated_user)):
+              user: User = Depends(door("read"))):
     """Stream a referenced media file's bytes."""
     row = _owned(db, user, record_id)
     if row is None:
@@ -297,7 +298,7 @@ def get_media(record_id: str, ref: str, db: Session = Depends(get_db),
 @router.delete("/{record_id}/media/{ref:path}")
 def delete_media(record_id: str, ref: str, actor: str = "human@cli",
                  db: Session = Depends(get_db),
-                 user: User = Depends(get_authenticated_user)):
+                 user: User = Depends(door("delete"))):
     """Drop a media reference from this record (bytes remain in the blob store)."""
     row = _owned(db, user, record_id)
     if row is None:
@@ -317,7 +318,7 @@ def delete_media(record_id: str, ref: str, actor: str = "human@cli",
 @router.post("/{record_id}/observe")
 def observe_canonical(record_id: str, req: ObserveRequest,
                       db: Session = Depends(get_db),
-                      user: User = Depends(get_authenticated_user)):
+                      user: User = Depends(door("observe"))):
     """A machine reports a measurement for an OBSERVABLE field. Scope-gated: a
     machine may not observe (let alone assert) something it cannot measure —
     e.g. geometry.shape is rejected."""

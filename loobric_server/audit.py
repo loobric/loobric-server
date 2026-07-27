@@ -22,6 +22,20 @@ from uuid import uuid4
 from loobric_server.database.schema import AuditLog
 
 
+def set_audit_credential(db: Session, channel: Optional[str],
+                         api_key_id: Optional[str]) -> None:
+    """Record the acting credential (session / api-key / solo) for this
+    request; every audit row written through the same db session carries it.
+
+    The carrier is Session.info (SQLAlchemy's per-session scratch dict) —
+    NOT a contextvar, deliberately: FastAPI runs sync dependencies and
+    endpoints in threadpool hops with copied contexts, so a contextvar set
+    in the auth dependency never reaches the endpoint. The db session is the
+    one object both provably share."""
+    db.info["audit_channel"] = channel
+    db.info["audit_api_key_id"] = api_key_id
+
+
 def create_audit_log(
     session: Session,
     user_id: str,
@@ -73,7 +87,9 @@ def create_audit_log(
         entity_id=entity_id,
         changes=changes,
         result=result,
-        error_message=error_message
+        error_message=error_message,
+        channel=session.info.get("audit_channel"),
+        api_key_id=session.info.get("audit_api_key_id")
     )
     
     session.add(audit_log)

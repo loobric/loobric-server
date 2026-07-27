@@ -121,7 +121,7 @@ def test_validate_api_key_success(db_session):
     )
     
     # Validate key
-    validated_user, scopes, tags = validate_api_key(db_session, plain_key)
+    validated_user, scopes, tags, key_id = validate_api_key(db_session, plain_key)
     
     assert validated_user is not None
     assert validated_user.id == user.id
@@ -170,7 +170,7 @@ def test_api_key_with_multiple_scopes(db_session):
         scopes=scopes
     )
     
-    validated_user, returned_scopes, tags = validate_api_key(db_session, plain_key)
+    validated_user, returned_scopes, tags, key_id = validate_api_key(db_session, plain_key)
     
     assert set(returned_scopes) == set(scopes)
     assert isinstance(tags, list)

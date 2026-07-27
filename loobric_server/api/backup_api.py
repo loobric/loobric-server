@@ -14,7 +14,7 @@ Assumptions:
 - Returns metadata and validation results
 """
 from typing import Annotated
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -29,10 +29,17 @@ from loobric_server.database.schema import User
 router = APIRouter(prefix="/api/v1/backup", tags=["backup"])
 
 
-def require_admin(user: User = Depends(get_authenticated_user)) -> User:
+def require_admin(request: Request,
+                  user: User = Depends(get_authenticated_user)) -> User:
     """Gate full-database backup/restore to administrators. In solo mode the
     built-in solo user is the first user and therefore an admin, so solo
-    deployments still work with no auth ceremony."""
+    deployments still work with no auth ceremony.
+
+    API keys additionally need the `admin` door scope (SCOPES_PLAN §3): an
+    admin's everyday key must not wield admin power unless it explicitly
+    grants it."""
+    from loobric_server.auth.doors import check_doors
+    check_doors(request, ("admin",))
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Backup requires an administrator")
     return user

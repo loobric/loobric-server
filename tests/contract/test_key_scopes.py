@@ -1,0 +1,217 @@
+# GNU Affero General Public License v3.0 only
+# Copyright (c) 2025 sliptonic
+# SPDX-License-Identifier: AGPL-3.0-only
+
+"""
+Contract tests for door-aligned API key scopes (SCOPES_PLAN.md, grilled
+2026-07-27).
+
+The seven scopes are the doors: read, sync, observe, assert, bind, delete,
+admin. Sessions and solo mode are unscoped (a session IS the human). Keys:
+
+- a key's writes are gated by the doors it holds; the 403 names the missing
+  scope
+- LEGACY keys (any stored scope list that isn't a non-empty subset of the
+  door names) degrade to READ-ONLY — a deliberate founder-chosen break
+- creating a key requires explicit, valid door scopes (400 otherwise)
+- key management (create/revoke) is session-or-solo territory — a key must
+  never be able to create a stronger key
+- every audit row records which credential wrote it (api_key_id + channel)
+
+Test discipline: the server resolves session auth before Bearer auth, and the
+test client keeps cookies — so every test creates its keys over the session
+FIRST, then clears the cookie jar before exercising key-authenticated calls.
+"""
+import pytest
+
+BASE = "/api/v1"
+
+
+def _register_and_login(client, email="scopes@test.io"):
+    r = client.post(f"{BASE}/auth/register",
+                    json={"email": email, "password": "p" * 12})
+    assert r.status_code in (200, 201), r.text
+    r = client.post(f"{BASE}/auth/login",
+                    json={"email": email, "password": "p" * 12})
+    assert r.status_code == 200, r.text
+    return client
+
+
+def _key(client, scopes, name="k"):
+    """Create a key via the (session-authed) client; return Bearer headers."""
+    r = client.post(f"{BASE}/auth/keys", json={"name": name, "scopes": scopes})
+    assert r.status_code == 201, r.text
+    return {"Authorization": "Bearer " + r.json()["key"]}
+
+
+def _catalog_body(pc="SCOPE-1"):
+    return {"actor": "probe", "name": {"value": "scoped endmill"},
+            "manufacturer": {"value": "shop"}, "product_code": {"value": pc}}
+
+
+@pytest.fixture
+def session_client(client):
+    return _register_and_login(client)
+
+
+# -- enforcement: the doors a key holds are the doors it can use --------------
+
+def test_read_only_key_reads_but_cannot_write(session_client):
+    h = _key(session_client, ["read"], "ro")
+    session_client.cookies.clear()
+    assert session_client.get(f"{BASE}/tool-catalog-records",
+                              headers=h).status_code == 200
+    r = session_client.post(f"{BASE}/tool-catalog-records",
+                            headers=h, json=_catalog_body())
+    assert r.status_code == 403
+    assert "assert" in r.json()["detail"]        # names the missing scope
+
+
+def test_agent_key_asserts_but_cannot_observe_or_delete(session_client):
+    """The canonical AI key: read sync assert. Creates and asserts fine;
+    observe and delete are 403 at the credential boundary — true even for a
+    raw client that bypasses the MCP surface."""
+    h = _key(session_client, ["read", "sync", "assert"], "agent")
+    session_client.cookies.clear()
+    made = session_client.post(f"{BASE}/tool-catalog-records",
+                               headers=h, json=_catalog_body("SCOPE-2"))
+    assert made.status_code == 200, made.text
+    rid = made.json()["internal"]["id"]
+
+    inst = session_client.post(
+        f"{BASE}/tool-catalog-records/{rid}/create-instance",
+        headers=h, json={})
+    assert inst.status_code == 200, inst.text
+    iid = inst.json()["internal"]["id"]
+
+    obs = session_client.post(f"{BASE}/tool-instance-records/{iid}/observe",
+                              headers=h,
+                              json={"path": "geometry.diameter", "value": 6.35,
+                                    "unit": "mm", "client": "linuxcnc",
+                                    "machine": "m1"})
+    assert obs.status_code == 403 and "observe" in obs.json()["detail"]
+
+    dele = session_client.delete(f"{BASE}/tool-catalog-records/{rid}",
+                                 headers=h)
+    assert dele.status_code == 403 and "delete" in dele.json()["detail"]
+
+
+def test_agent_key_cannot_write_tool_table_entries(session_client):
+    """Entries are the machine's side of the contract (observe door): an
+    assert key cannot fabricate machine state."""
+    h = _key(session_client, ["read", "sync", "assert"], "agent2")
+    session_client.cookies.clear()
+    r = session_client.post(f"{BASE}/tool-table-entry-records", headers=h,
+                            json={"machine_id": "m-1", "tool_number": 5,
+                                  "client": "linuxcnc"})
+    assert r.status_code == 403 and "observe" in r.json()["detail"]
+
+
+def test_qa_on_create_instance_requires_observe(session_client):
+    """The composite rule: create-instance is assert-door, but a `qa` payload
+    writes observed:manufacturer@… — so qa additionally requires observe."""
+    full = _key(session_client, ["read", "sync", "assert", "observe"], "mfr")
+    agent = _key(session_client, ["read", "sync", "assert"], "agent3")
+    session_client.cookies.clear()
+    rid = session_client.post(f"{BASE}/tool-catalog-records", headers=full,
+                              json=_catalog_body("SCOPE-QA")
+                              ).json()["internal"]["id"]
+    qa_body = {"qa": {"diameter": {"value": 6.34, "unit": "mm"}},
+               "cert": "mfr@SN1"}
+    denied = session_client.post(
+        f"{BASE}/tool-catalog-records/{rid}/create-instance",
+        headers=agent, json=qa_body)
+    assert denied.status_code == 403 and "observe" in denied.json()["detail"]
+    allowed = session_client.post(
+        f"{BASE}/tool-catalog-records/{rid}/create-instance",
+        headers=full, json=qa_body)
+    assert allowed.status_code == 200, allowed.text
+
+
+# -- legacy keys break to read-only (founder decision, SCOPES_PLAN §5) --------
+
+def test_legacy_scoped_key_degrades_to_read_only(session_client, db_session):
+    """A pre-0.6.0 key (scopes like ["read","write"]) reads fine but its
+    writes 403 with the distinct legacy message."""
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.database.schema import User
+    user = db_session.query(User).filter_by(email="scopes@test.io").one()
+    plain = create_api_key(session=db_session, user_id=user.id,
+                           name="legacy", scopes=["read", "write"])
+    session_client.cookies.clear()
+    h = {"Authorization": "Bearer " + plain}
+    assert session_client.get(f"{BASE}/tool-catalog-records",
+                              headers=h).status_code == 200
+    r = session_client.post(f"{BASE}/tool-catalog-records",
+                            headers=h, json=_catalog_body("SCOPE-L"))
+    assert r.status_code == 403
+    assert "predates" in r.json()["detail"]      # the legacy-specific message
+
+
+# -- key creation: explicit, valid scopes required ----------------------------
+
+@pytest.mark.parametrize("scopes", [None, [], ["write"], ["read", "banana"]])
+def test_key_creation_requires_valid_door_scopes(session_client, scopes):
+    body = {"name": "bad"}
+    if scopes is not None:
+        body["scopes"] = scopes
+    r = session_client.post(f"{BASE}/auth/keys", json=body)
+    assert r.status_code in (400, 422), r.text
+
+
+def test_key_cannot_create_keys(session_client):
+    """No privilege escalation: a key creating itself a stronger key would
+    make scoping meaningless. Key management is session (or solo) territory."""
+    h = _key(session_client, ["read", "sync", "assert"], "escalator")
+    session_client.cookies.clear()
+    r = session_client.post(f"{BASE}/auth/keys", headers=h,
+                            json={"name": "stronger",
+                                  "scopes": ["read", "delete"]})
+    assert r.status_code == 403
+
+
+# -- audit attribution: which credential wrote it -----------------------------
+
+def test_audit_rows_record_credential_and_channel(session_client, db_session):
+    from loobric_server.database.schema import AuditLog
+    # session write first (cookie intact) …
+    rid2 = session_client.post(f"{BASE}/tool-catalog-records",
+                               json=_catalog_body("SCOPE-B")
+                               ).json()["internal"]["id"]
+    h = _key(session_client, ["read", "sync", "assert"], "audited")
+    session_client.cookies.clear()
+    # … then the key write with no session in play
+    rid = session_client.post(f"{BASE}/tool-catalog-records", headers=h,
+                              json=_catalog_body("SCOPE-A")
+                              ).json()["internal"]["id"]
+
+    row2 = db_session.query(AuditLog).filter_by(
+        entity_type="tool_catalog_record", entity_id=rid2,
+        operation="CREATE").one()
+    assert row2.channel == "session"
+    assert row2.api_key_id is None
+
+    row = db_session.query(AuditLog).filter_by(
+        entity_type="tool_catalog_record", entity_id=rid,
+        operation="CREATE").one()
+    assert row.channel == "api-key"
+    assert row.api_key_id is not None
+
+
+# -- sessions and solo stay unscoped ------------------------------------------
+
+def test_session_can_use_every_door(session_client):
+    rid = session_client.post(f"{BASE}/tool-catalog-records",
+                              json=_catalog_body("SCOPE-S")
+                              ).json()["internal"]["id"]
+    assert session_client.delete(
+        f"{BASE}/tool-catalog-records/{rid}").status_code == 200
+
+
+def test_solo_mode_passes_everything(solo_client):
+    r = solo_client.post(f"{BASE}/tool-catalog-records",
+                         json=_catalog_body("SCOPE-SOLO"))
+    assert r.status_code == 200
+    rid = r.json()["internal"]["id"]
+    assert solo_client.delete(
+        f"{BASE}/tool-catalog-records/{rid}").status_code == 200

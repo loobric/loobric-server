@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.database.schema import (
     User, ToolTableEntryRecord as Row, ToolInstanceRecord as InstanceRow,
 )
@@ -125,7 +126,7 @@ class BindRequest(BaseModel):
 
 @router.post("")
 def create_entry(payload: CreateRequest, db: Session = Depends(get_db),
-                 user: User = Depends(get_authenticated_user)):
+                 user: User = Depends(door("observe"))):
     clients = {}
     if payload.client:
         clients[payload.client] = {
@@ -164,7 +165,7 @@ class EntrySyncRequest(BaseModel):
 
 @router.post("/sync")
 def sync_entries(req: EntrySyncRequest, db: Session = Depends(get_db),
-               user: User = Depends(get_authenticated_user)):
+               user: User = Depends(door("observe"))):
     """The machine-table push: upsert a machine's entries by tool_number in one
     call. Each entry's number+offsets are OBSERVED (the machine measured them)
     and the client section is written. mode=snapshot reconciles away entries
@@ -262,7 +263,7 @@ def sync_entries(req: EntrySyncRequest, db: Session = Depends(get_db),
 
 @router.get("")
 def list_entries(machine_id: Optional[str] = None, db: Session = Depends(get_db),
-                 user: User = Depends(get_authenticated_user)):
+                 user: User = Depends(door("read"))):
     q = db.query(Row).filter(Row.user_id == user.id)
     if machine_id:
         q = q.filter(Row.machine_id == machine_id)
@@ -271,7 +272,7 @@ def list_entries(machine_id: Optional[str] = None, db: Session = Depends(get_db)
 
 @router.get("/{record_id}")
 def get_entry(record_id: str, db: Session = Depends(get_db),
-              user: User = Depends(get_authenticated_user)):
+              user: User = Depends(door("read"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -281,7 +282,7 @@ def get_entry(record_id: str, db: Session = Depends(get_db),
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("sync"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -310,7 +311,7 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/observe")
 def observe_canonical(record_id: str, req: ObserveRequest,
                       db: Session = Depends(get_db),
-                      user: User = Depends(get_authenticated_user)):
+                      user: User = Depends(door("observe"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -369,7 +370,7 @@ def _mint_instance_from_entry(db: Session, user: User, row: Row, req: "BindReque
 
 @router.post("/{record_id}/bind")
 def bind_instance(record_id: str, req: BindRequest, db: Session = Depends(get_db),
-                  user: User = Depends(get_authenticated_user)):
+                  user: User = Depends(door("bind"))):
     """Bind a physical instance into this entry. Pass an `instance_id` to bind an
     existing instance; omit it to mint a new instance from the entry's own
     observations (the 'new tool' path of the inbox) and bind that. Install-once:
@@ -422,7 +423,7 @@ def bind_instance(record_id: str, req: BindRequest, db: Session = Depends(get_db
 
 @router.delete("/{record_id}")
 def delete_entry(record_id: str, db: Session = Depends(get_db),
-                user: User = Depends(get_authenticated_user)):
+                user: User = Depends(door("delete"))):
     """Remove a machine-reported entry (and its open proposals). The instance it
     held, if any, is not deleted. If the controller re-pushes, the entry returns."""
     row = _owned(db, user, record_id)
@@ -439,7 +440,7 @@ def delete_entry(record_id: str, db: Session = Depends(get_db),
 
 @router.post("/{record_id}/unbind")
 def unbind_instance(record_id: str, db: Session = Depends(get_db),
-                    user: User = Depends(get_authenticated_user)):
+                    user: User = Depends(door("bind"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")

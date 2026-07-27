@@ -455,6 +455,11 @@ class AuditLog(Base):
     changes: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     result: Mapped[str] = mapped_column(String(20), nullable=False)  # success, error
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Which credential wrote it (0.6.0, SCOPES_PLAN §6): the declared actor
+    # in `changes` is client-supplied; these two are server-known truth, so a
+    # spoofed actor is detectable. Null on pre-0.6.0 rows.
+    channel: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)  # session / api-key / solo
+    api_key_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
 
 def init_db(engine=None):

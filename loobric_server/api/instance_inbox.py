@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.database.schema import (
     User, ToolInstanceRecord as InstanceRow, ToolTableEntryRecord as EntryRow,
     EntryProposal,
@@ -34,7 +35,7 @@ def _value(canonical: dict, *path: str):
 
 @router.get("")
 def inbox(db: Session = Depends(get_db),
-          user: User = Depends(get_authenticated_user)):
+          user: User = Depends(door("read"))):
     """Generate proposals for any unbound entries, then list the open ones,
     enriched with the entry and the proposed instance."""
     for entry in db.query(EntryRow).filter(
@@ -72,7 +73,7 @@ def _resolve(db: Session, user: User, proposal_id: str) -> EntryProposal:
 
 @router.post("/{proposal_id}/confirm")
 def confirm(proposal_id: str, db: Session = Depends(get_db),
-            user: User = Depends(get_authenticated_user)):
+            user: User = Depends(door("bind"))):
     """Same tool: install the proposed instance in the entry (install-once
     enforced), and mark the proposal confirmed."""
     p = _resolve(db, user, proposal_id)
@@ -113,7 +114,7 @@ def confirm(proposal_id: str, db: Session = Depends(get_db),
 
 @router.post("/{proposal_id}/reject")
 def reject(proposal_id: str, db: Session = Depends(get_db),
-           user: User = Depends(get_authenticated_user)):
+           user: User = Depends(door("bind"))):
     """Different tool: drop the suggestion; this (entry, instance) pair is never
     proposed again."""
     p = _resolve(db, user, proposal_id)

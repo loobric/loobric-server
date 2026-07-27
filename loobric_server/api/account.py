@@ -22,6 +22,7 @@ see `/api/v1/admin/wipe` and `/api/v1/backup/*`.)
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from loobric_server.auth.doors import door
 from loobric_server.api.auth import get_authenticated_user, get_db
 from loobric_server.audit import create_audit_log
 from loobric_server.database.schema import (
@@ -93,7 +94,7 @@ def _tool_data_counts(db: Session, uid: str) -> dict:
 
 @router.post("/reset")
 def reset_account(db: Session = Depends(get_db),
-                  user: User = Depends(get_authenticated_user)):
+                  user: User = Depends(door("admin"))):
     """Delete ALL of the caller's tool data, keeping the account and API keys.
     Atomic. The account, its users, and its API keys are untouched."""
     uid = user.id
@@ -106,7 +107,7 @@ def reset_account(db: Session = Depends(get_db),
 
 @router.post("/seed-demo")
 def seed_demo(db: Session = Depends(get_db),
-              user: User = Depends(get_authenticated_user)):
+              user: User = Depends(door("admin"))):
     """Populate a fresh account with the demo dataset so there's something to
     explore. Owner-gated; touches only the caller's data. Refuses (409) when the
     account already holds tool data — load it on a clean slate (Reset first to

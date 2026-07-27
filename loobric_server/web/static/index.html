@@ -992,14 +992,18 @@ async function submitCreateFromCatalog(){
 function renderAccount(){
   const me = state.me || {};
   const keys = state.keys || [];
+  const DOOR_NAMES=["read","sync","observe","assert","bind","delete","admin"];
   const keyRows = keys.length ? keys.map(k=>{
-    const scopes=(k.scopes||[]).join(" ");
+    const sc=k.scopes||[];
+    const legacy = !(sc.length && sc.every(s=>DOOR_NAMES.includes(s)));
+    const scopes=sc.join(" ");
     const active = k.is_active!==false;
     return `<div class="krow">
       <span class="tinfo">
         <strong>${esc(k.name||"(unnamed)")}</strong>
         <span class="id" title="${esc(k.id||"")}">${esc(String(k.id||"").slice(0,8))}</span>
         ${scopes?`<span class="muted">${esc(scopes)}</span>`:""}
+        ${legacy?'<span class="pill bad" title="Created before scoped keys — now READ-ONLY. Create a new key with the scopes you need.">legacy &middot; read-only</span>':""}
         ${active?"":'<span class="pill bad">revoked</span>'}
       </span>
       ${active?`<button class="mini del" onclick="revokeKey('${esc(k.id)}','${esc(k.name||"")}')">Revoke</button>`:""}
@@ -1036,15 +1040,36 @@ function renderAccount(){
     </div>`;
 }
 
+// Scope presets: a key holds the DOORS it may use (read, sync, observe,
+// assert, bind, delete, admin). The presets encode the intended holders; the
+// AI-agent key deliberately lacks observe/bind/delete — agents assert, never
+// observe, and never confirm bindings or delete.
+const KEY_PRESETS = {
+  agent:      {scopes:"read sync assert",         hint:"AI agent (MCP) — can read, sync, and assert; can never observe, bind, or delete"},
+  controller: {scopes:"read sync observe",        hint:"Machine/controller — reports measured truth (tool tables, offsets)"},
+  cam:        {scopes:"read sync assert",         hint:"CAM client — reads the crib, writes its own section, asserts"},
+  full:       {scopes:"read sync observe assert bind delete", hint:"Full personal key — everything except admin"},
+};
+function applyKeyPreset(name){
+  const p=KEY_PRESETS[name]; if(!p) return;
+  $("#kn_scopes").value=p.scopes; $("#kn_hint").textContent=p.hint;
+}
 function openNewKey(){
   $("#keynewbody").innerHTML = `
     <label class="cclabel" for="kn_name">Name</label>
     <input id="kn_name" class="ccinput" placeholder="e.g. laptop CLI"
            onkeydown="if(event.key==='Enter')submitNewKey(); else if(event.key==='Escape')closeKeyNew();">
+    <label class="cclabel">Preset</label>
+    <div class="arow" style="margin:.2rem 0 .4rem">
+      <button class="mini" onclick="applyKeyPreset('agent')">AI agent</button>
+      <button class="mini" onclick="applyKeyPreset('controller')">Controller</button>
+      <button class="mini" onclick="applyKeyPreset('cam')">CAM client</button>
+      <button class="mini" onclick="applyKeyPreset('full')">Full</button>
+    </div>
     <label class="cclabel" for="kn_scopes">Scopes</label>
-    <input id="kn_scopes" class="ccinput" value="read write" placeholder="space-separated, e.g. read write">
-    <div class="muted" style="font-size:.82rem;margin-top:.3rem">Common: <code>read write</code>
-      for a full client, or <code>read</code> for read-only.</div>
+    <input id="kn_scopes" class="ccinput" value="" placeholder="e.g. read sync assert">
+    <div class="muted" id="kn_hint" style="font-size:.82rem;margin-top:.3rem">Pick a preset, or
+      combine doors: read &middot; sync &middot; observe &middot; assert &middot; bind &middot; delete &middot; admin.</div>
     <div class="arow">
       <button class="mini reject" onclick="closeKeyNew()">Cancel</button>
       <button class="mini confirm" onclick="submitNewKey()">Create key</button>

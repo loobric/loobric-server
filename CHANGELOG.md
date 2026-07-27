@@ -3,6 +3,54 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.6.0] — 2026-07-27
+
+### ⚠️ BREAKING: API key scopes are now enforced — legacy keys become READ-ONLY
+
+Scopes existed since v1 but **no v2 endpoint ever checked them** (proven by
+probe: a `["read"]` key could write). 0.6.0 makes scopes real, aligned with
+the doors (SCOPES_PLAN.md, grilled 2026-07-27):
+
+- **The seven scopes ARE the doors**: `read`, `sync`, `observe`, `assert`,
+  `bind`, `delete`, `admin`. Every public endpoint checks the calling key.
+  The canonical **AI-agent key is `read sync assert`** — an agent's
+  credential physically cannot observe, bind, or delete, even through a raw
+  client that bypasses the MCP surface.
+- **Legacy keys** (any pre-0.6.0 scope list, e.g. `["read","write"]`)
+  **degrade to read-only**. Their writes 403 with: *"This API key predates
+  door scopes and is now read-only. Create a new key with the scopes you
+  need."* This is deliberate — the old strings were never enforced, and
+  grandfathering them would perpetuate unscoped credentials. **Rotate your
+  keys after upgrading** (LinuxCNC push keys, MCP keys, importer keys).
+- **Creating a key now requires explicit door scopes** (400 otherwise). The
+  Web UI gains preset buttons (AI agent / Controller / CAM client / Full)
+  and badges legacy keys "legacy · read-only".
+- **Keys cannot manage keys**: key creation/revocation and password change
+  now require a session (or solo mode) — a key can never create itself a
+  stronger key.
+- **Composite rule**: the `qa` payload on create-instance writes
+  `observed:manufacturer@…`, so it additionally requires the `observe`
+  scope — an assert-only key can no longer smuggle measured values through
+  a create.
+- **Tool-table-entry create/push requires `observe`** — entries are the
+  machine's side of the contract; an agent key cannot fabricate machine
+  state.
+- **Sessions and solo mode are unscoped** — a signed-in human may use every
+  door; admin surface still requires the admin role (keys additionally need
+  the `admin` scope).
+
+### Added
+- **Audit rows record the acting credential**: new `channel`
+  (`session` / `api-key` / `solo`) and `api_key_id` columns (migration
+  0002). The declared actor is client-supplied; these are server truth — a
+  spoofed actor string is now detectable with one query.
+- **`GET /auth/me` returns the calling key's effective scopes** (API-key
+  auth only), so a client — e.g. `loobric-mcp` — can introspect its own
+  credential and warn when over-scoped.
+- Glossary: **Scope (API key)** entry; `docs/AUTHENTICATION.md` rewritten
+  for the door model (the old `action:entity`/wildcard/tag text described a
+  system that never ran on v2).
+
 ## [0.5.1] — 2026-07-27
 
 ### Added

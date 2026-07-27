@@ -47,19 +47,41 @@ The public API is served under `/api/v1/`. The primary resources are
 `tool-set-records`, and `machine-records` (see [ARCHITECTURE.md](./ARCHITECTURE.md)
 and [TOOL_SCHEMA.md](./TOOL_SCHEMA.md)).
 
-### Scopes
+### Scopes (0.6.0 — door-aligned, ENFORCED)
 
-Scopes follow a simple `action:entity` pattern, with wildcards:
+An API key's scopes are the **doors** it may use (SCOPES_PLAN.md, grilled
+2026-07-27). The seven scope names ARE the canonical door vocabulary:
 
-- `read` — read access to all resources
-- `write:<entity>` — create/update a resource kind (e.g. `write:instances`)
-- `delete:<entity>` — delete a resource kind
-- `admin:<entity>` — administrative actions on a resource kind
-- `write:*` — any write action (action wildcard)
-- `admin:*` — full access; **bypasses scope and tag checks**
+| Scope | Grants | Typical holder |
+|---|---|---|
+| `read` | every GET (records, changes, audit, media) | everyone |
+| `sync` | writing the client's own section | CAM/controller clients |
+| `observe` | the observe door + tool-table-entry create/push, and the `qa` payload on create-instance | machines / deterministic pipelines only |
+| `assert` | the assert door, seeded creates, tool-set membership, media attach | humans, agents |
+| `bind` | bind / unbind / Inbox confirm & reject | humans |
+| `delete` | record and media-reference deletes | humans |
+| `admin` | wipe, account reset, seed-demo, backups, user roster | admins (the key needs the scope AND the account the role) |
 
-A key with no scopes is denied. `admin:*` grants everything; the `read` scope
-covers all read operations.
+The canonical **AI-agent key is `read sync assert`** — it cannot observe,
+bind, or delete, which makes "agents assert, never observe" a property of the
+credential rather than a convention.
+
+Rules:
+
+- Creating a key **requires** explicit scopes drawn from the seven names —
+  anything else is a 400. Presets: `loobric create-key --preset agent`
+  (`controller` / `cam` / `full`), or the Web UI preset buttons.
+- **Legacy keys** (created before 0.6.0, e.g. `["read", "write"]`) degrade to
+  **read-only**; their writes 403 with a message saying to create a new key.
+- **Sessions are unscoped** — a signed-in human may use every door (admin
+  endpoints still require the admin role). Solo mode likewise.
+- **API keys cannot manage keys or change passwords** — key creation and
+  revocation require a session (or solo mode), so a key can never create
+  itself a stronger key.
+- Every audit row records the acting credential: `channel`
+  (`session` / `api-key` / `solo`) and `api_key_id`. The declared actor is
+  client-supplied; these columns are server truth, so a spoofed actor string
+  is detectable.
 
 ### Tags
 
@@ -91,14 +113,10 @@ environment isolation (`production`, `staging`).
   unless auth is disabled (below).
 - **Per-user data isolation** applies everywhere: each user sees only their own
   data; an admin sees all of it. API keys inherit their owner's access.
-- **Scope + tag enforcement** is wired on the internal tool resources
-  (tool items, assemblies, instances, presets).
-- **Per-client scope enforcement for the public sectioned-record API**
-  (`tool-instance-records` et al.) is the planned per-client scope manifest
-  described in [TOOL_SCHEMA.md](./TOOL_SCHEMA.md) §10 — **not yet enforced**.
-  Those endpoints currently rely on authentication and per-user isolation. Treat
-  the scope/tag model above as the access-control design; do not assume
-  fine-grained scope rejection on the records API until §10 lands.
+- **Door-scope enforcement** (0.6.0): every public sectioned-record endpoint
+  checks the calling key's scopes per the table above. The 403 names the
+  missing scope. Tag-based access (below) predates the reboot and is **not**
+  enforced on the v2 surface; treat tags as informational metadata.
 
 ## Security
 

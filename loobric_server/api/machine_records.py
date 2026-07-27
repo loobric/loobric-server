@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.database.schema import User, MachineRecord as Row
 from loobric_server.audit import create_audit_log
 from loobric_server.contract import (
@@ -116,7 +117,7 @@ class AssertRequest(BaseModel):
 
 @router.post("")
 def create_machine(payload: CreateRequest, db: Session = Depends(get_db),
-                   user: User = Depends(get_authenticated_user)):
+                   user: User = Depends(door("assert"))):
     """Mint a machine. Canonical starts all-unknown (name only); an optional
     initial client section may be seeded. Canonical is populated only via the
     assert door thereafter."""
@@ -140,14 +141,14 @@ def create_machine(payload: CreateRequest, db: Session = Depends(get_db),
 
 @router.get("")
 def list_machines(db: Session = Depends(get_db),
-                  user: User = Depends(get_authenticated_user)):
+                  user: User = Depends(door("read"))):
     rows = db.query(Row).filter(Row.user_id == user.id).order_by(Row.created_at).all()
     return {"items": [_response(r) for r in rows]}
 
 
 @router.get("/{record_id}")
 def get_machine(record_id: str, db: Session = Depends(get_db),
-                user: User = Depends(get_authenticated_user)):
+                user: User = Depends(door("read"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -156,7 +157,7 @@ def get_machine(record_id: str, db: Session = Depends(get_db),
 
 @router.delete("/{record_id}")
 def delete_machine(record_id: str, db: Session = Depends(get_db),
-                   user: User = Depends(get_authenticated_user)):
+                   user: User = Depends(door("delete"))):
     """Delete a machine and its tool-table entries (and their proposals). Tool
     instances are NOT deleted — only this machine and what it reported."""
     row = _owned(db, user, record_id)
@@ -180,7 +181,7 @@ def delete_machine(record_id: str, db: Session = Depends(get_db),
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("sync"))):
     """Routine sync: write THIS client's section. The client is named by the
     path; the body is the envelope (`client_version`, `client_item_id`) + opaque
     `data`. A body carrying `internal`/`canonical`/stray keys is a 400."""
@@ -214,7 +215,7 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/assert")
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
-                     user: User = Depends(get_authenticated_user)):
+                     user: User = Depends(door("assert"))):
     """Deliberately declare a canonical value (name, controller_type, the post
     definition). A machine's identity is declared, never measured — there is no
     observe door here. Audited; stamps source asserted:<actor>."""

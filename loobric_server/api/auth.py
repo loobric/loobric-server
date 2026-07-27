@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from loobric_server.auth.apikey import (
     create_api_key, list_user_api_keys, revoke_api_key, delete_api_key
 )
+from loobric_server.auth.doors import session_or_solo_only
 from loobric_server.auth.user import create_user, authenticate_user, get_user_by_id, get_user_by_email
 from loobric_server.config import settings
 from loobric_server.database.schema import Base, init_db, User
@@ -103,6 +104,10 @@ class UserResponse(BaseModel):
     is_admin: bool
     role: str
     created_at: datetime
+    # Present only for API-key auth: the EFFECTIVE door scopes of the calling
+    # key (legacy keys report ["read"]). Lets a client (e.g. loobric-mcp)
+    # introspect its own credential without key-management access.
+    scopes: Optional[list[str]] = None
 
 
 class ApiKeyCreate(BaseModel):
@@ -218,12 +223,17 @@ def require_auth(
     """
     from loobric_server.auth.apikey import validate_api_key
 
+    from loobric_server.audit import set_audit_credential
+
     # Solo mode: single-user box, no auth ceremony
     if solo_mode_enabled():
         user = get_solo_user(db)
         if request:
             request.state.scopes = []
             request.state.is_api_key_auth = False
+            request.state.auth_channel = "solo"
+            request.state.api_key_id = None
+        set_audit_credential(db, channel="solo", api_key_id=None)
         return user
 
     # Try session authentication first
@@ -234,20 +244,26 @@ def require_auth(
             # This signals session auth vs API key auth
             request.state.scopes = []
             request.state.is_api_key_auth = False
+            request.state.auth_channel = "session"
+            request.state.api_key_id = None
+        set_audit_credential(db, channel="session", api_key_id=None)
         return user
-    
+
     # Try API key authentication
     if authorization and authorization.startswith("Bearer "):
         api_key = authorization.replace("Bearer ", "")
         result = validate_api_key(db, api_key)
         if result:
-            # validate_api_key returns (user, scopes, tags)
-            user, scopes, tags = result
+            # validate_api_key returns (user, scopes, tags, key_id)
+            user, scopes, tags, key_id = result
             if request:
                 # Store scopes and tags in request state for authorization
                 request.state.scopes = scopes or []
                 request.state.api_key_tags = tags or []
                 request.state.is_api_key_auth = True
+                request.state.auth_channel = "api-key"
+                request.state.api_key_id = key_id
+            set_audit_credential(db, channel="api-key", api_key_id=key_id)
             return user
     
     raise HTTPException(
@@ -273,8 +289,14 @@ def get_authenticated_user(
         authorization: Authorization header (Bearer token)
         db: Database session
     """
+    from loobric_server.audit import set_audit_credential
+
     # Solo mode: act as the built-in solo user (no auth ceremony)
     if solo_mode_enabled():
+        if request:
+            request.state.auth_channel = "solo"
+            request.state.api_key_id = None
+        set_audit_credential(db, channel="solo", api_key_id=None)
         return get_solo_user(db)
 
     # If auth is enabled, enforce normal authentication
@@ -285,8 +307,9 @@ def get_authenticated_user(
             db=db,
             request=request
         )
-    
+
     # Auth disabled: return or create a test user
+    set_audit_credential(db, channel=None, api_key_id=None)
     user = get_user_by_email(db, "test@example.com")
     if user is None:
         user = create_user(db, "test@example.com", "test-password-123")
@@ -482,8 +505,9 @@ def logout(
     return {"message": "Logged out successfully"}
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=UserResponse, response_model_exclude_none=True)
 def get_current_user(
+    request: Request,
     user: User = Depends(get_authenticated_user)
 ):
     """Get current authenticated user.
@@ -503,13 +527,19 @@ def get_current_user(
     Raises:
         HTTPException: 401 if not authenticated
     """
+    scopes = None
+    if getattr(request.state, "auth_channel", None) == "api-key":
+        from loobric_server.auth.doors import effective_doors
+        scopes = sorted(effective_doors(
+            getattr(request.state, "scopes", [])))
     return UserResponse(
         id=user.id,
         email=user.email,
         is_active=user.is_active,
         is_admin=user.is_admin,
         role=user.role,
-        created_at=user.created_at
+        created_at=user.created_at,
+        scopes=scopes
     )
 
 
@@ -517,8 +547,16 @@ def get_current_user(
 def create_key(
     key_data: ApiKeyCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_authenticated_user)
+    user: User = Depends(session_or_solo_only())
 ):
+    from loobric_server.auth.doors import DOORS
+    requested = set(key_data.scopes or [])
+    if not requested or not requested.issubset(DOORS):
+        raise HTTPException(
+            status_code=400,
+            detail="scopes are required and must be door names %s — e.g. an "
+                   "AI agent key is ['read', 'sync', 'assert']"
+                   % (list(DOORS),))
     """Create a new API key for the authenticated user.
     
     Args:
@@ -591,7 +629,7 @@ def list_keys(db: Session = Depends(get_db), user: User = Depends(get_authentica
 
 
 @router.delete("/keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
-def revoke_key(key_id: str, db: Session = Depends(get_db), user: User = Depends(get_authenticated_user)):
+def revoke_key(key_id: str, db: Session = Depends(get_db), user: User = Depends(session_or_solo_only())):
     """Revoke an API key (soft delete; the key must belong to the caller).
 
     Args:
@@ -624,7 +662,7 @@ class PasswordChangeRequest(BaseModel):
 def change_password(
     request: PasswordChangeRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_authenticated_user)
+    user: User = Depends(session_or_solo_only())
 ):
     """Change user password.
     

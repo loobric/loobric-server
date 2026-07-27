@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from loobric_server.api.auth import get_db, get_authenticated_user
+from loobric_server.auth.doors import door
 from loobric_server.database.schema import (
     User, ToolSetRecord as Row,
 )
@@ -129,7 +130,7 @@ class RefreshRequest(BaseModel):
 
 @router.post("")
 def create_set(payload: CreateRequest, db: Session = Depends(get_db),
-               user: User = Depends(get_authenticated_user)):
+               user: User = Depends(door("assert"))):
     clients = {}
     if payload.client:
         clients[payload.client] = {
@@ -149,14 +150,14 @@ def create_set(payload: CreateRequest, db: Session = Depends(get_db),
 
 @router.get("")
 def list_sets(db: Session = Depends(get_db),
-              user: User = Depends(get_authenticated_user)):
+              user: User = Depends(door("read"))):
     rows = db.query(Row).filter(Row.user_id == user.id).order_by(Row.created_at).all()
     return {"items": [_read_response(db, r) for r in rows]}
 
 
 @router.get("/{record_id}")
 def get_set(record_id: str, db: Session = Depends(get_db),
-            user: User = Depends(get_authenticated_user)):
+            user: User = Depends(door("read"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -165,7 +166,7 @@ def get_set(record_id: str, db: Session = Depends(get_db),
 
 @router.delete("/{record_id}")
 def delete_set(record_id: str, db: Session = Depends(get_db),
-               user: User = Depends(get_authenticated_user)):
+               user: User = Depends(door("delete"))):
     """Delete a tool set. The member tool instances are NOT deleted — only the
     collection."""
     row = _owned(db, user, record_id)
@@ -181,7 +182,7 @@ def delete_set(record_id: str, db: Session = Depends(get_db),
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("sync"))):
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -210,7 +211,7 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/assert")
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
-                     user: User = Depends(get_authenticated_user)):
+                     user: User = Depends(door("assert"))):
     """Assert `name` or the `machine_id` link. Linking a machine makes the set
     machine-bound (its member numbers are then inherited from the machine's entries)."""
     row = _owned(db, user, record_id)
@@ -235,7 +236,7 @@ def assert_canonical(record_id: str, req: AssertRequest,
 
 @router.post("/{record_id}/members")
 def set_members(record_id: str, req: MembersRequest, db: Session = Depends(get_db),
-                user: User = Depends(get_authenticated_user)):
+                user: User = Depends(door("assert"))):
     """Replace membership. A supplied number is asserted; an omitted one is
     unknown (until inherited from a machine's entries, if the set is machine-bound)."""
     row = _owned(db, user, record_id)
@@ -262,7 +263,7 @@ def set_members(record_id: str, req: MembersRequest, db: Session = Depends(get_d
 @router.post("/{record_id}/refresh")
 def refresh_from_machine(record_id: str, req: RefreshRequest = RefreshRequest(),
                          db: Session = Depends(get_db),
-                         user: User = Depends(get_authenticated_user)):
+                         user: User = Depends(door("assert"))):
     """Refresh a machine-bound set from its machine — a MERGE, not a replace.
 
     This is the MACHINE-DRIVEN counterpart to set_members (POST /members, the

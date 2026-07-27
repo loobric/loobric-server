@@ -61,3 +61,4 @@ OPEN_CORE.md
 
 # Claude Code local tooling/memory
 .claude/
+*.db.pre-migration-*.bak

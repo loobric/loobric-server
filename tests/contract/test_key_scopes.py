@@ -128,6 +128,47 @@ def test_qa_on_create_instance_requires_observe(session_client):
     assert allowed.status_code == 200, allowed.text
 
 
+def test_agent_key_cannot_bind_or_touch_inbox(session_client):
+    """The bind door is human-only doctrine made credential: bind/unbind and
+    Inbox confirm/reject need the `bind` scope the agent preset lacks."""
+    h = _key(session_client, ["read", "sync", "assert"], "agent4")
+    session_client.cookies.clear()
+    for path in ("/tool-table-entry-records/x/bind",
+                 "/tool-table-entry-records/x/unbind",
+                 "/instance-inbox/x/confirm",
+                 "/instance-inbox/x/reject"):
+        r = session_client.post(f"{BASE}{path}", headers=h, json={})
+        # 403 (scope) must win before 404 (no such record) — the door check
+        # runs in the dependency, before the handler ever looks anything up.
+        assert r.status_code == 403, (path, r.status_code, r.text)
+        assert "bind" in r.json()["detail"]
+
+
+def test_read_only_key_cannot_sync(session_client):
+    h = _key(session_client, ["read"], "ro2")
+    session_client.cookies.clear()
+    r = session_client.put(
+        f"{BASE}/tool-catalog-records/x/clients/freecad",
+        headers=h, json={"data": {}})
+    assert r.status_code == 403 and "sync" in r.json()["detail"]
+
+
+def test_full_preset_key_cannot_reach_admin_surface(session_client):
+    """The `full` preset deliberately excludes admin: even an admin USER's
+    full key cannot wipe, reset, or read the roster — admin power must be
+    granted to the credential explicitly."""
+    h = _key(session_client,
+             ["read", "sync", "observe", "assert", "bind", "delete"], "fullk")
+    session_client.cookies.clear()
+    for method, path in (("POST", "/account/reset"),
+                         ("POST", "/admin/wipe"),
+                         ("GET", "/backup/export")):
+        r = session_client.request(method, f"{BASE}{path}",
+                                   headers=h, json={})
+        assert r.status_code == 403, (path, r.status_code, r.text)
+        assert "admin" in r.json()["detail"]
+
+
 # -- legacy keys break to read-only (founder decision, SCOPES_PLAN §5) --------
 
 def test_legacy_scoped_key_degrades_to_read_only(session_client, db_session):

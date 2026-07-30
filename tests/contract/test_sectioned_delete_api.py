@@ -63,8 +63,9 @@ def test_delete_entry_and_set(solo_client):
 
 @pytest.mark.contract
 def test_create_set_from_machine_orchestration(solo_client):
-    """The exact sequence the web UI runs: create set, assert name+machine_id,
-    set members from the machine's installed instances."""
+    """The exact sequence the web UI runs: create set, assert name, set members
+    from the machine's installed instances, then `use-set` to make it the
+    machine's active setup."""
     m = _machine(solo_client)
     a = solo_client.post(INST, json={}).json()["internal"]["id"]
     b = solo_client.post(INST, json={}).json()["internal"]["id"]
@@ -73,11 +74,13 @@ def test_create_set_from_machine_orchestration(solo_client):
 
     sid = solo_client.post(SET, json={}).json()["internal"]["id"]
     solo_client.post(f"{SET}/{sid}/assert", json={"path": "name", "value": "millstone tools", "actor": "human@web"})
-    solo_client.post(f"{SET}/{sid}/assert", json={"path": "machine_id", "value": m, "actor": "human@web"})
     r = solo_client.post(f"{SET}/{sid}/members", json={"actor": "human@web",
                          "members": [{"tool_record_id": a}, {"tool_record_id": b}]})
     assert r.status_code == 200, r.text
     doc = r.json()
-    assert doc["canonical"]["machine_id"]["value"] == m
     members = {mm["tool_record_id"] for mm in doc["canonical"]["members"]}
     assert members == {a, b}           # both installed instances are now members
+    r = solo_client.post("/api/v1/machine-set-maps",
+                         json={"machine_id": m, "tool_set_id": sid})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "active"

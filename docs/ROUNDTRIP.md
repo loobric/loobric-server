@@ -4,9 +4,10 @@ This document walks a single tool set through its whole life — from an empty
 database, out to a FreeCAD programmer, and back to the machine — and defines the
 behavior each client must implement for the loop to close cleanly.
 
-The scenario deliberately includes the hard case: a programmer adds a tool that
-**does not yet physically exist on the machine**. Getting that to settle without
-either side clobbering the other is the point of the whole exercise.
+The scenario deliberately includes the hard case: a programmer claims a tool
+number for a tool that **does not yet physically exist on the machine**.
+Getting that to settle without either side clobbering the other is the point of
+the whole exercise. (Design: `MAPPING_PLAN.md`, grilled & locked 2026-07-29.)
 
 ---
 
@@ -15,41 +16,51 @@ either side clobbering the other is the point of the whole exercise.
 | Thing | What it is | Source of truth |
 |-------|------------|-----------------|
 | **Machine** | A controller (e.g. the LinuxCNC box named `millstone`). | — |
-| **Tool table entry** | One row in the machine's tool table — a pocket with a `tool_number` and measured offsets. | **Machine** (observed) |
+| **Tool table entry** | One row in the machine's tool table — a `tool_number` and measured offsets. | **Machine** (observed) |
 | **Tool instance** | A physical tool that exists in the shop, independent of any pocket. | Human / client (asserted) |
-| **Binding** | The link between a tool table entry (a pocket) and the tool instance loaded into it. | Human (asserted), often via a proposal |
-| **Tool set** | A named collection of tools (e.g. `millstone`). May be **bound** to a machine. Its `members` reference tool instances. | Human / client (asserted) |
+| **Binding** | The link between a tool table entry and the tool instance loaded into it. | Human (asserted), often via a proposal |
+| **Tool set** | A named collection of tools — purely CAM-owned. Each member's `number` is CAM's durable **claim**: the T-number posted G-code will call. | Human / client (asserted) |
+| **Setup** | The period during which a tool set is active on a machine (`loobric use-set`). Transitory; ended rows are the machine's history. | Operator (bind door) |
 
 ### Authority rules (these make the loop closeable)
 
-1. **Membership is asserted by humans/clients.** A programmer in FreeCAD may add
-   a member to a set. The machine never owns *which* tools belong to a set.
-2. **Numbers and offsets are observed from the machine.** For a member that is
-   loaded, its `tool_number` and offsets are inherited from the machine's entry.
-3. **`refresh from machine` reconciles observed fields only.** It updates numbers
-   and offsets for loaded members. **It never deletes a member that has no machine
-   entry yet** — that member is a pending request, not stale data.
+1. **Membership and claims are asserted by humans/clients.** A programmer in
+   FreeCAD may add a member to a set and claim a number for it. The machine
+   never owns *which* tools belong to a set, and **observation never
+   overwrites a claim** — the machine's number rides alongside (`observed`),
+   it never replaces the member's `number`.
+2. **Numbers and offsets on entries are observed from the machine.** The tool
+   table is machine truth; the server never creates, renumbers, or deletes a
+   machine-side row on its own.
+3. **The server is never an interlock.** Every disagreement between claims and
+   table is *displayed* (the setup view), never enforced. Individual clients
+   may add local enforcement for their users; the server never gates a sync, a
+   post, or a machine.
+4. **Pending is information, not a task.** Nobody is obligated to drive the
+   diff to zero. A one-tool job list against a thirty-tool table is a valid,
+   healthy state — 29 notes, not 29 alarms.
 
-### Member states (for a set bound to a machine)
+### Claim states (for the machine's active setup, derived at read time)
 
-A set can legitimately have *more members than the machine has tool table
-entries*. The extra members are requests in flight, not an error.
+| State | Meaning | Severity |
+|-------|---------|----------|
+| **satisfied** | Mounted, at the claimed number, identity confirmed. Reads "ok". | — |
+| **requested** | Nothing on the machine holds it — a load request awaiting the operator. | attention |
+| **mismounted** | Mounted + confirmed, but at a different number (CAM says T14, table has T9). | attention |
+| **blocked** | A *different* confirmed tool holds the claimed number — posted G-code would run the wrong tool. | attention |
+| **pending bind** | Something is mounted for the claim; identity unconfirmed. | attention |
+| **unlisted / unknown tool** | Table rows the set doesn't claim (the probe; leftovers; unbound mysteries). | **notes** — never alarms |
 
-| State | Meaning | How it shows up |
-|-------|---------|-----------------|
-| **loaded** | Member has a bound machine entry. Number/offsets are observed. | "in sync" |
-| **requested** | Member asserted into the set; the machine has no entry for it. A load request awaiting the operator. | "1 tool requested" |
-| **pending bind** | Operator mounted the tool; the machine now reports an entry, but it isn't bound to the instance yet. | "1 pending bind" |
-
-`set members (18) ≠ machine entries (17)` is a **valid, in-sync state** whenever
-the difference is accounted for by `requested` / `pending bind` members.
+The headline is **ready**: every claim satisfied. Notes never count against
+it. `set members ≠ machine entries` is a **valid state** whenever the
+difference is accounted for by the states above.
 
 ---
 
 ## The roundtrip
 
 ### Step 0 — Empty start
-The database is empty. No machines, instances, or sets.
+The database is empty. No machines, instances, sets, or setups.
 
 ### Step 1 — `loobric-linuxcnc` first sync
 The controller client runs `sync`.
@@ -63,102 +74,122 @@ The controller client runs `sync`.
 The operator runs **bind new** on each entry, linking each pocket to the tool
 instance physically loaded in it. The 17 entries are now bound.
 
-### Step 3 — Create the set (web UI)
-The operator runs **Create tool set**, names it `millstone`, and binds it to the
-machine. The set is created with **17 members**, one per bound entry. Because the
-set is machine-bound, each member's number is **observed** from the machine.
+### Step 3 — Create the set and make it the setup (web UI)
+The operator runs **Create tool set**, names it `millstone`: the set is created
+with **17 members**, each claiming the number its tool is mounted at, and
+becomes the machine's **active setup** (`use-set`). Every claim is satisfied.
 
-> State: set `millstone` = 17 loaded members. Machine = 17 entries. In sync.
+> State: setup `millstone` = 17 satisfied claims. Machine = 17 entries. **Ready.**
 
 ### Step 4 — `loobric-freecad` first download
-The programmer launches the sync tool. It fetches from the server and shows set
-`millstone` with 17 tools, all not yet present locally. The operator chooses to
-download the set and all tools, then presses **apply**.
-
-> Expectation: after apply, everything reports **in sync**.
+The programmer launches the sync tool, downloads the set and all tools, and
+presses **apply**. The `.fctl` numbers are the members' claims.
 
 **Required behavior:** on download-apply, the client records the server's version
 as its local baseline. It must **not** treat the just-written local copy as a
-newer local edit. (Previously this produced a phantom "local is newer — upload"
-prompt that forced a second apply. That is a bug, not the intended flow.)
+newer local edit.
 
-> State: FreeCAD, server, and machine all agree on 17 loaded tools. In sync.
+> State: FreeCAD, server, and machine all agree on 17 tools. Ready.
 
-### Step 5 — Programmer needs a new tool (FreeCAD + `loobric-freecad`)
-Setting up a job, the programmer needs a tool the machine doesn't have yet. In the
-FreeCAD tool library manager they import or create a toolbit and add it to the
-`millstone` library. Back in the sync tool they press **apply**.
+### Step 5 — Programmer claims a new tool (FreeCAD + `loobric-freecad`)
+Setting up a job, the programmer needs a tool the machine doesn't have yet. In
+the FreeCAD tool library manager they create the toolbit, add it to the
+`millstone` library **at nr 18** — the claim — and press **apply**.
 
-This **asserts a new member** into the set (and creates its tool instance). Because
-the machine has no entry for it, the member is uploaded in the **requested** state
-— the programmer is, in effect, requesting that this tool be loaded on the machine.
+This **asserts a new member with claim 18** into the set (and creates its tool
+instance). The programmer can now build the Job against T18 and post G-code:
+the claim is durable, and nothing has touched the machine.
 
-> State: set `millstone` = 18 members (17 loaded, **1 requested**). Machine = 17
-> entries. This is in sync — the difference is one tracked request.
+> State: setup = 18 claims (17 satisfied, **1 requested**). Machine = 17
+> entries. **NOT READY (1 need attention)** — a tracked request, not an error.
 
-### Step 6 — Operator sees the request (web UI)
-The operator views `millstone` and sees **18 members: 17 loaded, 1 requested**, and
-the Machine with 17 entries. The UI presents the requested tool as a pending load,
-not as a mismatch to "fix".
-
-> `refresh from machine` here changes nothing: it reconciles the 17 loaded members
-> and **leaves the requested member intact**.
+### Step 6 — Everyone sees the same thing
+The web UI's machine card, `loobric status millstone`, and the FreeCAD sync
+view all show the requested claim. Nothing nags, nothing blocks: the flags
+inform.
 
 ### Step 7 — Controller surfaces the request (`loobric-linuxcnc`)
-The controller client runs its scheduled `sync`. It pulls the machine-bound set,
-compares the 18 members against the 17 local entries, and finds one member with no
-entry — a request.
+The controller client's scheduled `sync` reads the setup view:
 
-> Report: `17 tools in sync, 1 tool requested: "<tool name>" — mount it and assign a pocket`
+> Report: `17 tools in sync, 1 tool requested: "<name>" (<id>) - mount it and
+> assign pocket 18`
 
-It does **not** alter the `.tbl` on its own and does **not** drop the request.
+It does **not** alter the `.tbl` and does **not** drop the request.
 
-### Step 8 — Operator mounts the tool, controller reconciles (machine + `loobric-linuxcnc`)
-The operator physically mounts the requested tool and assigns it a pocket (e.g.
-tool number 18), adding the line to the `.tbl`. On the next `sync`, the controller
-pushes a **new tool table entry** (observed: number + offsets). The machine now has
-18 entries — but the new one is **unbound**.
+### Step 8 — Operator mounts the tool, controller pushes
+The operator mounts the tool at pocket 18 and adds the `.tbl` line. The next
+`sync` pushes a **new unbound entry** (observed: number + offsets). Because the
+active set claims 18 for the requested instance, the server opens a
+**high-confidence (0.95) binding proposal** naming it. (The bridge fires in
+BOTH orderings: entry-then-claim and claim-then-entry — a claim asserted after
+the tool was already mounted proposes immediately, not at the next push.)
 
-Because the set member already names the requested instance, the client opens a
-**high-confidence binding proposal** linking the new entry to that instance.
+> Report: `17 tools in sync, 1 pending bind`
 
-> Report: `18 tools in sync, 1 pending bind`
+### Step 9 — Confirm the binding (any bind-door credential)
+The operator (or the programmer — MAPPING_PLAN §10 Q2) confirms the proposal.
+Entry 18 is bound; the claim flips to **satisfied**: claim 18 (asserted, still
+untouched), observed 18, identity confirmed.
 
-### Step 9 — Confirm the binding (web UI, or automatic)
-The operator confirms the binding proposal (or it auto-resolves given its
-confidence). Entry 18 is now bound to the requested instance; the member flips from
-**requested** to **loaded**, and its number becomes observed (18).
+> Report everywhere: `Ready (millstone) - 18 tools in sync.`
 
-> Report everywhere: `millstone — 18 tools, in sync. Machine — 18 tools.`
+### Step 10 — FreeCAD catches up
+The programmer's next sync pulls the now-satisfied member. Its `.fctl` nr is
+**still the claim (18)** — the pull never rewrites a claim with an
+observation. Nothing to push; the posted G-code was right all along.
 
-### Step 10 — FreeCAD catches up (`loobric-freecad`)
-The programmer's next sync pulls the now-loaded member, which gained an observed
-tool number. Nothing to push.
-
-> Report: `18 tools, in sync`
-
-**The loop is closed.** The tool travelled FreeCAD → set (as a request) → operator
-→ machine (as an observed entry) → binding, and every client converges on 18 loaded
-tools with no side clobbering another's change.
+**The loop is closed.** The tool travelled FreeCAD → set (as a claim) →
+operator → machine (as an observed entry) → binding, and every client
+converges with no side clobbering another's change.
 
 ---
 
+## The detour: mismount (steps 8b–10b)
+
+Suppose pocket 18's retention knob is damaged, so the operator mounts the tool
+at **T9** instead and binds it there.
+
+> State: **mismounted** — claim 18 (asserted), observed 9. Every surface shows
+> both numbers. The posted G-code still calls T18, which is exactly why this
+> line needs attention.
+
+Two honest resolutions, both through normal channels:
+
+- **(a) Operator remounts at 18.** The next sync moves the binding; claim ==
+  observed; **satisfied**. Zero writes anywhere else.
+- **(b) Programmer concedes.** In FreeCAD they renumber the library entry to
+  9 — an *explicit edit*, never the sync's — repost the Job, and apply. The
+  push re-asserts claim 9; claim == observed; **satisfied**.
+
+The sync itself never launders 18 into 9: a pulled `.fctl` keeps the claim.
+
+## The crib shop: switching setups
+
+A shop that sets the machine up per job keeps several sets. Switching is one
+operator act:
+
+```
+loobric use-set millstone flange-job
+```
+
+The previous setup **ends** (its row survives — `loobric setup-history
+millstone` answers "what ran when, started by whom"). Nothing else changes:
+every binding, entry, member, and claim is exactly as it was. The view flips
+instantly: the new set's claims classify against the same machine truth, last
+job's still-mounted tools become **notes** (unlisted), and the machine reads
+ready the moment the new claims are satisfied. The permanently-mounted probe
+pends as a note forever — honestly, and harmlessly.
+
 ## Why this closes the loop
 
-The earlier design could not settle because:
+The earlier designs could not settle because:
 
-- A machine-bound set treated **membership as observed from the machine**, so
-  `refresh from machine` deleted any member the machine didn't have — wiping the
-  programmer's new tool.
-- There was **no representation** for "in the library but not yet on the machine,"
-  so clients kept trying to force `set count == machine count`, pumping in opposite
-  directions (web shrinking the set to 17, FreeCAD re-uploading to 18) and never
-  creating the one thing that would reconcile them: a machine tool table entry.
-
-The fix is the three authority rules plus the `requested` / `pending bind` states:
-
-1. Membership is asserted, never overwritten by the machine.
-2. A member with no machine entry is a **request to load**, surfaced to the
-   operator — not stale data to delete.
-3. The request rides the existing binding mechanism: mount → observed entry →
-   proposal → bound → loaded.
+- membership was treated as observed from the machine, so refresh deleted the
+  programmer's new tool (fixed by authority rule 1);
+- there was no representation for "in the library but not yet on the machine"
+  (fixed by the `requested` claim state);
+- and the sync **overwrote asserted numbers with observations** — the claim
+  CAM programmed against was laundered away on every round trip, so the one
+  contract that matters (the G-code's T-number) was connected to nothing
+  durable (fixed by MAPPING_PLAN §5.1: claims are durable; observation rides
+  alongside; `/refresh` — which persisted observations into claims — is gone).

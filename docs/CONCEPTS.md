@@ -162,12 +162,15 @@ That is precisely a client feature built from the two existing primitives:
    controller's table.
 3. The next sync reports the new reality, and the server's tool table reflects it.
 
-Your instinct is the design: which set is *loaded* is machine-side state, and how
-loading happens is controller-specific — best handled by a client. The core's job
-is only to never lose the facts on either side of the swap. If core grew
-"multiple alternative tables per machine," it would be modeling intent twice and
-observation never — and the wear offsets discovered under setup A would have no
-single home when setup B is loaded.
+Your instinct is the design: which set the machine is running is operator-side
+state — recorded as the machine's **active setup** (`loobric use-set`, one row,
+history preserved; MAPPING_PLAN.md) — while how tools physically get loaded is
+controller-specific and stays with the operator. The core's job is to never
+lose the facts on either side of the swap and to *show* how they compare (the
+setup view: ready / needs attention / notes), never to enforce. If core grew
+"multiple alternative tables per machine," it would be modeling intent twice
+and observation never — and the wear offsets discovered under setup A would
+have no single home when setup B is running.
 
 ---
 

@@ -19,7 +19,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean, DateTime, Float, Integer, String, Text, JSON, ForeignKey,
-    UniqueConstraint, create_engine
+    UniqueConstraint, Index, text, create_engine
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -352,13 +352,12 @@ class ToolTableEntryRecord(Base, TimestampMixin, VersionMixin, UserAttributionMi
 
 
 class ToolSetRecord(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
-    """Sectioned tool-schema entity: an agnostic named collection. Optional
-    `machine_id` link (extracted) — when set, member numbers are reconciled
-    from that machine's entries (machine wins)."""
+    """Sectioned tool-schema entity: an agnostic named collection — purely
+    CAM-owned. The machine relationship lives on MachineSetMap (the setup),
+    never on the set (MAPPING_PLAN.md)."""
     __tablename__ = "tool_set_records"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    machine_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     canonical: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     clients: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
@@ -371,6 +370,40 @@ class MachineRecord(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     canonical: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     clients: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class MachineSetMap(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
+    """A setup: the period during which a tool set is active on a machine
+    (MAPPING_PLAN.md §3). A bare association row — identity, lifecycle, and
+    attribution ONLY. It stores no tool data, no derived reconciliation state,
+    and no decisions; everything the setup *shows* (satisfied / mismounted /
+    blocked / requested / notes) is computed at read time from bindings,
+    members, and entries. Internal entity: the name never reaches a user —
+    they see the verbs (`use-set`) and the views.
+
+    Lifecycle: activating a set on a machine ends any prior active row (the
+    partial unique index below is the one-active-setup-per-machine invariant,
+    enforced as a constraint, not a convention). Ended rows are never deleted —
+    they are the machine's setup history."""
+    __tablename__ = "machine_set_maps"
+    __table_args__ = (
+        Index("uq_active_map_per_machine", "machine_id", unique=True,
+              sqlite_where=text("status = 'active'"),
+              postgresql_where=text("status = 'active'")),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    machine_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    tool_set_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tool_set_records.id"), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="active")
+    activated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Acting credential, mirroring audit rows: created_by (mixin) is who
+    # activated; these add the channel's key id and who/what ended it.
+    activated_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    ended_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    ended_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
 
 
 class EntryProposal(Base, TimestampMixin, VersionMixin, UserAttributionMixin):

@@ -2,13 +2,15 @@
 # Copyright (c) 2025 sliptonic
 # SPDX-License-Identifier: AGPL-3.0-only
 
-"""Contract tests for the sectioned ToolSetRecord facade — the agnostic
-collection."""
+"""Contract tests for the sectioned ToolSetRecord facade — the agnostic,
+purely CAM-owned collection (MAPPING_PLAN.md: the machine relationship is a
+setup, never a set field; member numbers are durable claims)."""
 import pytest
 from loobric_server.contract import ToolSet, UNKNOWN
 
 BASE = "/api/v1/tool-set-records"
 ENTRY = "/api/v1/tool-table-entry-records"
+MAPS = "/api/v1/machine-set-maps"
 
 
 def conforms(doc):
@@ -17,12 +19,22 @@ def conforms(doc):
 
 
 @pytest.mark.contract
-def test_create_and_assert_name_and_link(solo_client):
+def test_create_and_assert_name(solo_client):
     rid = solo_client.post(BASE, json={}).json()["internal"]["id"]
     doc = conforms(solo_client.post(f"{BASE}/{rid}/assert",
                    json={"path": "name", "value": "millstone tools", "actor": "freecad"}).json())
     assert doc["canonical"]["name"]["value"] == "millstone tools"
-    assert doc["canonical"]["machine_id"]["source"] == UNKNOWN   # general set until linked
+    assert "machine_id" not in doc["canonical"]   # the link is a setup, not a field
+
+
+@pytest.mark.contract
+def test_machine_id_is_no_longer_assertable(solo_client):
+    """BREAKING (0.7.0): linking is `use-set` (POST /machine-set-maps), not an
+    assert on the set. The old path is a loud 400, never a silent no-op."""
+    rid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    r = solo_client.post(f"{BASE}/{rid}/assert",
+                         json={"path": "machine_id", "value": "m-x", "actor": "freecad"})
+    assert r.status_code == 400
 
 
 @pytest.mark.contract
@@ -34,7 +46,7 @@ def test_sync_lane_discipline(solo_client):
                            json={"client_version": "0.3", "internal": {"id": "x"}}).status_code == 400
 
 
-# -- member-state reconciliation for a machine-bound set (ROUNDTRIP_FIXES S1) --
+# -- member-state reconciliation through the active setup ----------------------
 
 def _entry_with_number(solo_client, machine_id, tool_number):
     """Create an entry on a machine and observe its tool_number; return its id."""
@@ -45,73 +57,105 @@ def _entry_with_number(solo_client, machine_id, tool_number):
     return eid
 
 
-def _bound_set(solo_client, machine_id, members):
+def _active_set(solo_client, machine_id, members):
+    """A set with `members`, made the machine's active setup via use-set."""
     sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
-    solo_client.post(f"{BASE}/{sid}/assert",
-                     json={"path": "machine_id", "value": machine_id, "actor": "freecad"})
     solo_client.post(f"{BASE}/{sid}/members", json={"members": members, "actor": "freecad"})
+    r = solo_client.post(MAPS, json={"machine_id": machine_id, "tool_set_id": sid})
+    assert r.status_code == 200, r.text
     return sid
 
 
 @pytest.mark.contract
-def test_get_machine_bound_set_marks_loaded_and_inherits_observed_number(solo_client):
-    eid = _entry_with_number(solo_client, "m-loaded", 5)
+def test_satisfied_member_keeps_claim_and_carries_observed(solo_client):
+    """The §5.1 laundering fix, end to end: the claim stays asserted; the
+    machine's observation rides alongside in `observed`, never over it."""
+    eid = _entry_with_number(solo_client, "m-sat", 5)
     solo_client.post(f"{ENTRY}/{eid}/bind",
                      json={"instance_id": "inst-A", "actor": "human@inbox"})
-    sid = _bound_set(solo_client, "m-loaded", [{"tool_record_id": "inst-A"}])
+    sid = _active_set(solo_client, "m-sat", [{"tool_record_id": "inst-A", "number": 5}])
 
     doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
     (m,) = doc["canonical"]["members"]
-    assert m["state"] == "loaded"
+    assert m["state"] == "satisfied"
     assert m["number"]["value"] == 5
-    assert m["number"]["source"].startswith("observed:")
+    assert m["number"]["source"].startswith("asserted:")     # the claim, untouched
+    assert m["observed"]["value"] == 5
+    assert m["observed"]["source"].startswith("observed:")   # the fact, alongside
 
 
 @pytest.mark.contract
-def test_get_machine_bound_set_marks_requested_and_keeps_asserted_number(solo_client):
+def test_mismounted_member_shows_both_numbers(solo_client):
+    eid = _entry_with_number(solo_client, "m-mis", 9)
+    solo_client.post(f"{ENTRY}/{eid}/bind",
+                     json={"instance_id": "inst-A", "actor": "human@inbox"})
+    sid = _active_set(solo_client, "m-mis", [{"tool_record_id": "inst-A", "number": 14}])
+
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    (m,) = doc["canonical"]["members"]
+    assert m["state"] == "mismounted"
+    assert m["number"]["value"] == 14                        # CAM programmed T14
+    assert m["observed"]["value"] == 9                       # machine has it at T9
+
+
+@pytest.mark.contract
+def test_blocked_when_claimed_number_held_by_other_tool(solo_client):
+    eid = _entry_with_number(solo_client, "m-blk", 5)
+    solo_client.post(f"{ENTRY}/{eid}/bind",
+                     json={"instance_id": "inst-OTHER", "actor": "human@inbox"})
+    sid = _active_set(solo_client, "m-blk", [{"tool_record_id": "inst-A", "number": 5}])
+
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    (m,) = doc["canonical"]["members"]
+    assert m["state"] == "blocked"
+    assert m["number"]["value"] == 5
+
+
+@pytest.mark.contract
+def test_requested_member_keeps_asserted_claim(solo_client):
     eid = _entry_with_number(solo_client, "m-req", 5)
     solo_client.post(f"{ENTRY}/{eid}/bind",
                      json={"instance_id": "inst-A", "actor": "human@inbox"})
-    sid = _bound_set(solo_client, "m-req",
-                     [{"tool_record_id": "inst-A"},
-                      {"tool_record_id": "inst-NEW", "number": 18}])
+    sid = _active_set(solo_client, "m-req",
+                      [{"tool_record_id": "inst-A", "number": 5},
+                       {"tool_record_id": "inst-NEW", "number": 18}])
 
     doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
     by_id = {m["tool_record_id"]: m for m in doc["canonical"]["members"]}
-    assert by_id["inst-A"]["state"] == "loaded"
+    assert by_id["inst-A"]["state"] == "satisfied"
     req = by_id["inst-NEW"]
     assert req["state"] == "requested"
     assert req["number"]["value"] == 18
     assert req["number"]["source"].startswith("asserted:")
+    assert req["observed"] is None
 
 
 @pytest.mark.contract
-def test_get_machine_bound_set_marks_pending_bind(solo_client):
-    """An unbound entry the binding engine proposes for a member's instance reads
-    as 'pending bind': the machine has the entry, the binding isn't confirmed."""
-    # An instance with a diameter, so the diameter heuristic proposes it.
+def test_pending_bind_via_proposal(solo_client):
+    """An unbound entry the binding engine proposes for a member's instance
+    reads as 'pending bind': mounted, identity unconfirmed."""
     inst = solo_client.post("/api/v1/tool-instance-records", json={}).json()["internal"]["id"]
     solo_client.post(f"/api/v1/tool-instance-records/{inst}/assert",
                      json={"path": "geometry.diameter", "value": 6.35, "unit": "mm",
                            "actor": "freecad"})
-    # An unbound entry on the machine with a matching diameter and an observed number.
     eid = _entry_with_number(solo_client, "m-pend", 18)
     solo_client.post(f"{ENTRY}/{eid}/observe",
                      json={"path": "offsets.diameter", "value": 6.35, "unit": "mm",
                            "client": "linuxcnc", "machine": "millstone"})
-    # The inbox generates the open proposal naming the instance for this entry.
-    solo_client.get("/api/v1/instance-inbox")
+    solo_client.get("/api/v1/instance-inbox")     # generates the open proposal
 
-    sid = _bound_set(solo_client, "m-pend", [{"tool_record_id": inst, "number": 18}])
+    sid = _active_set(solo_client, "m-pend", [{"tool_record_id": inst, "number": 18}])
     doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
     (m,) = doc["canonical"]["members"]
     assert m["state"] == "pending bind"
     assert m["number"]["value"] == 18
-    assert m["number"]["source"].startswith("observed:")
+    assert m["number"]["source"].startswith("asserted:")     # claim untouched
+    assert m["observed"]["value"] == 18
+    assert m["observed"]["source"].startswith("observed:")
 
 
 @pytest.mark.contract
-def test_get_non_machine_bound_set_has_no_member_state(solo_client):
+def test_set_with_no_setup_has_no_member_state(solo_client):
     sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
     solo_client.post(f"{BASE}/{sid}/members",
                      json={"members": [{"tool_record_id": "inst-A", "number": 3}],
@@ -119,92 +163,79 @@ def test_get_non_machine_bound_set_has_no_member_state(solo_client):
     doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
     (m,) = doc["canonical"]["members"]
     assert m.get("state") is None
+    assert m.get("observed") is None
     assert m["number"]["value"] == 3
 
 
-# -- refresh-from-machine is a MERGE, not a replace (ROUNDTRIP_FIXES S2) -------
-#
-# The machine is authoritative for numbers/offsets, never for membership. A
-# member with no machine tool-table entry (a `requested` load) must NEVER be
-# deleted by a machine-driven refresh. This is distinct from POST /members
-# (set_members), the human "replace membership" operation.
-
-def _loaded_member(solo_client, machine_id, instance_id, tool_number):
-    """Create a machine entry observing `tool_number`, bound to `instance_id`."""
-    eid = _entry_with_number(solo_client, machine_id, tool_number)
-    solo_client.post(f"{ENTRY}/{eid}/bind",
-                     json={"instance_id": instance_id, "actor": "human@inbox"})
-
+# -- members: membership replaces, numbers MERGE (MAPPING_PLAN §5.1) -----------
 
 @pytest.mark.contract
-def test_refresh_preserves_requested_member_18_members_17_entries(solo_client):
-    """The key acceptance test (ROUNDTRIP_FIXES "Refusal"): a refresh against an
-    18-member / 17-entry set leaves 18 members — the one requested member (no
-    machine entry) survives; only observed numbers change."""
-    machine = "m-refresh"
-    members = []
-    for n in range(1, 18):                       # 17 loaded members, T1..T17
-        iid = f"inst-{n}"
-        _loaded_member(solo_client, machine, iid, n)
-        members.append({"tool_record_id": iid})
-    members.append({"tool_record_id": "inst-18", "number": 18})  # 18th: requested
-
-    sid = _bound_set(solo_client, machine, members)
-    assert len(solo_client.get(f"{BASE}/{sid}").json()["canonical"]["members"]) == 18
-
-    report = solo_client.post(f"{BASE}/{sid}/refresh", json={"actor": "human@web"}).json()
-    doc = conforms(report["set"])
-    by_id = {m["tool_record_id"]: m for m in doc["canonical"]["members"]}
-    assert len(by_id) == 18                       # nothing deleted
-    req = by_id["inst-18"]
-    assert req["state"] == "requested"
-    assert req["number"]["value"] == 18           # asserted preference preserved
-    assert req["number"]["source"].startswith("asserted:")
-
-    # And it persisted: a fresh GET still has all 18.
-    again = solo_client.get(f"{BASE}/{sid}").json()
-    assert len(again["canonical"]["members"]) == 18
-
-
-@pytest.mark.contract
-def test_refresh_writes_back_observed_numbers_for_loaded_members(solo_client):
-    """Loaded members pick up — and persist — the machine entry's observed
-    tool_number with observed provenance."""
-    machine = "m-refresh-obs"
-    _loaded_member(solo_client, machine, "inst-A", 7)
-    # Member added with no asserted number: persisted as unknown until refresh.
-    sid = _bound_set(solo_client, machine, [{"tool_record_id": "inst-A"}])
-
-    doc = conforms(solo_client.post(f"{BASE}/{sid}/refresh", json={}).json()["set"])
-    (m,) = doc["canonical"]["members"]
-    assert m["state"] == "loaded"
-    assert m["number"]["value"] == 7
-    assert m["number"]["source"].startswith("observed:")
-    assert doc["internal"]["version"] > 1         # the merge bumped the version
-
-
-@pytest.mark.contract
-def test_refresh_rejects_non_machine_bound_set(solo_client):
+def test_members_push_without_number_preserves_stored_claim(solo_client):
+    """The clobber fix: a push that omits a member's number (a client whose
+    local file simply didn't carry it) keeps the stored asserted claim."""
     sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
     solo_client.post(f"{BASE}/{sid}/members",
-                     json={"members": [{"tool_record_id": "inst-A"}], "actor": "freecad"})
-    assert solo_client.post(f"{BASE}/{sid}/refresh", json={}).status_code == 400
+                     json={"members": [{"tool_record_id": "inst-A", "number": 14}],
+                           "actor": "freecad"})
+    # Second push: same member, number omitted.
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-A"}],
+                           "actor": "freecad"})
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    (m,) = doc["canonical"]["members"]
+    assert m["number"]["value"] == 14                        # claim survived
+    assert m["number"]["source"].startswith("asserted:")
 
 
 @pytest.mark.contract
-def test_refresh_surfaces_ambiguities_without_renumbering(solo_client):
-    """An observed number colliding with another member's asserted preference is
-    surfaced, never silently renumbered."""
-    machine = "m-refresh-amb"
-    _loaded_member(solo_client, machine, "inst-A", 5)        # loaded -> observed 5
-    sid = _bound_set(solo_client, machine,
-                     [{"tool_record_id": "inst-A"},
-                      {"tool_record_id": "inst-NEW", "number": 5}])  # asserted 5
+def test_members_push_with_number_reasserts(solo_client):
+    sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-A", "number": 14}],
+                           "actor": "freecad"})
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-A", "number": 9}],
+                           "actor": "human@cli"})
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    (m,) = doc["canonical"]["members"]
+    assert m["number"]["value"] == 9                         # explicit re-assert wins
+    assert m["number"]["source"] == "asserted:human@cli"
 
-    body = solo_client.post(f"{BASE}/{sid}/refresh", json={}).json()
-    conforms(body["set"])
-    kinds = {a["kind"] for a in body["ambiguities"]}
-    assert "number_collision" in kinds
-    by_id = {m["tool_record_id"]: m for m in body["set"]["canonical"]["members"]}
-    assert by_id["inst-NEW"]["number"]["value"] == 5         # preference untouched
-    assert by_id["inst-NEW"]["number"]["source"].startswith("asserted:")
+
+@pytest.mark.contract
+def test_members_new_member_without_number_is_unknown(solo_client):
+    sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-NEW"}],
+                           "actor": "freecad"})
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    (m,) = doc["canonical"]["members"]
+    assert m["number"]["value"] is None
+    assert m["number"]["source"] == UNKNOWN
+
+
+@pytest.mark.contract
+def test_membership_itself_still_replaces(solo_client):
+    """CAM owns membership: a push that drops a member drops it (numbers merge,
+    membership does not)."""
+    sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-A", "number": 1},
+                                       {"tool_record_id": "inst-B", "number": 2}],
+                           "actor": "freecad"})
+    solo_client.post(f"{BASE}/{sid}/members",
+                     json={"members": [{"tool_record_id": "inst-A"}],
+                           "actor": "freecad"})
+    doc = conforms(solo_client.get(f"{BASE}/{sid}").json())
+    assert [m["tool_record_id"] for m in doc["canonical"]["members"]] == ["inst-A"]
+
+
+# -- refresh is gone: reads always derive; nothing persists observations -------
+
+@pytest.mark.contract
+def test_refresh_endpoint_removed(solo_client):
+    """BREAKING (0.7.0): /refresh persisted observed numbers into stored claims
+    — the server-side half of the laundering the durable-claims rule forbids.
+    Reads now always derive; there is nothing to refresh."""
+    sid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    assert solo_client.post(f"{BASE}/{sid}/refresh", json={}).status_code in (404, 405)

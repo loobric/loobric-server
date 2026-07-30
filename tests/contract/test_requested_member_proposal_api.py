@@ -41,12 +41,14 @@ def _instance(client, diameter=None):
 
 
 def _bound_set(client, machine, members, name="millstone"):
+    """A set with `members`, activated on `machine` via use-set."""
     sid = client.post(SET, json={}).json()["internal"]["id"]
     client.post(f"{SET}/{sid}/assert",
                 json={"path": "name", "value": name, "actor": "freecad"})
-    client.post(f"{SET}/{sid}/assert",
-                json={"path": "machine_id", "value": machine, "actor": "freecad"})
     client.post(f"{SET}/{sid}/members", json={"members": members, "actor": "freecad"})
+    r = client.post("/api/v1/machine-set-maps",
+                    json={"machine_id": machine, "tool_set_id": sid})
+    assert r.status_code == 200, r.text
     return sid
 
 
@@ -124,21 +126,26 @@ def test_bind_confirms_requested_proposal_and_member_becomes_loaded(solo_client)
     r = _sync(solo_client, machine, [{"tool_number": 18, "offsets": {"diameter": 6.0}}])
     eid = r.json()["items"][0]["internal"]["id"]
 
-    # The open proposal makes the member read as 'pending bind'.
+    # The open proposal makes the member read as 'pending bind'; the claim is
+    # untouched, the entry's observation rides alongside.
     (m,) = _members(solo_client, sid)
     assert m["state"] == "pending bind"
     assert m["number"]["value"] == 18
+    assert m["number"]["source"].startswith("asserted:")
+    assert m["observed"]["value"] == 18
 
     # Confirm the binding (the operator binds the entry to the requested tool).
     b = solo_client.post(f"{ENTRY}/{eid}/bind",
                          json={"instance_id": inst, "actor": "human@web"})
     assert b.status_code == 200, b.text
 
-    # The member flips to loaded, its number now observed from the machine.
+    # The member flips to satisfied: claimed 18, observed 18, identity confirmed.
     (m,) = _members(solo_client, sid)
-    assert m["state"] == "loaded"
+    assert m["state"] == "satisfied"
     assert m["number"]["value"] == 18
-    assert m["number"]["source"].startswith("observed:")
+    assert m["number"]["source"].startswith("asserted:")    # claim never overwritten
+    assert m["observed"]["value"] == 18
+    assert m["observed"]["source"].startswith("observed:")
 
     # And the proposal is no longer open (it was confirmed on bind).
     assert _proposals_for(solo_client, inst) == []

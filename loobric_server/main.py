@@ -34,6 +34,7 @@ from loobric_server.api.tool_instance_records import router as tool_instance_rec
 from loobric_server.api.tool_catalog_records import router as tool_catalog_records_router
 from loobric_server.api.tool_table_entry_records import router as tool_table_entry_records_router
 from loobric_server.api.tool_set_records import router as tool_set_records_router
+from loobric_server.api.machine_set_maps import router as machine_set_maps_router
 from loobric_server.api.machine_records import router as machine_records_router
 from loobric_server.api.instance_inbox import router as instance_inbox_router
 from loobric_server.api.account import router as account_router
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(tool_catalog_records_router)
     app.include_router(tool_table_entry_records_router)
     app.include_router(tool_set_records_router)
+    app.include_router(machine_set_maps_router)
     app.include_router(machine_records_router)
     app.include_router(instance_inbox_router)
     app.include_router(account_router)

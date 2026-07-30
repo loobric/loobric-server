@@ -28,6 +28,7 @@ from loobric_server.audit import create_audit_log
 from loobric_server.database.schema import (
     EntryProposal,
     MachineRecord,
+    MachineSetMap,
     ToolCatalogRecord,
     ToolInstanceRecord,
     ToolSetRecord,
@@ -37,11 +38,12 @@ from loobric_server.database.schema import (
 
 router = APIRouter(prefix="/api/v1/account", tags=["account"])
 
-# The caller's tool-data tables, in delete-safe order (proposals/entries before
-# the records/sets/machines they reference).
+# The caller's tool-data tables, in delete-safe order (proposals/entries/setups
+# before the records/sets/machines they reference).
 _TOOL_DATA_MODELS = (
     ("binding_proposals", EntryProposal),
     ("tool_table_entries", ToolTableEntryRecord),
+    ("setups", MachineSetMap),
     ("tool_sets", ToolSetRecord),
     ("tool_instances", ToolInstanceRecord),
     ("tool_catalogs", ToolCatalogRecord),
@@ -165,8 +167,18 @@ def seed_demo(db: Session = Depends(get_db),
                                                actor=_DEMO_ACTOR))
         s.set_members(record_id=sid, db=db, user=user,
                       req=s.MembersRequest(
-                          members=[s.MemberIn(tool_record_id=i) for i in inst_ids],
+                          members=[s.MemberIn(tool_record_id=i, number=n + 1)
+                                   for n, i in enumerate(inst_ids)],
                           actor=_DEMO_ACTOR))
+
+        # Make the demo set the machine's active setup BEFORE the table push, so
+        # the push's request-aware bridge opens elevated-confidence proposals —
+        # the demo lands with two `pending bind` claims to confirm.
+        from datetime import datetime, UTC
+        db.add(MachineSetMap(machine_id=mid, tool_set_id=sid, status="active",
+                             activated_at=datetime.now(UTC),
+                             user_id=uid, created_by=uid, updated_by=uid))
+        db.flush()
 
         e.sync_entries(db=db, user=user, req=e.EntrySyncRequest(
             machine_id=mid, client="linuxcnc-sim", machine_name="sandbox-mill",

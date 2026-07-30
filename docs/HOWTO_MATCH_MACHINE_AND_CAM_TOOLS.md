@@ -77,32 +77,34 @@ loobric bind <machine> 5 <record>
 Binding never overwrites either side; it routes future changes between the entry
 and the record.
 
-### 4. Link the set so it inherits the machine's numbering
+### 4. Make the set the machine's active setup, then check the numbers
 
-Identity is now settled per tool. The last step lines up the CAM set's member
-numbers with the machine's tool numbers, so the set and the control agree on
-T-numbers.
-
-**Link the set to the machine.** When a set is machine-linked, its member
-numbers are inherited from the machine's tool-table entries — the machine is
-observed fact, the set conforms. There is no separate step: linking *is* the
-alignment.
+Identity is now settled per tool. The last step is telling Loobric which set
+this machine is running, so the CAM set's claimed numbers and the machine's
+tool numbers can be *compared* — never silently rewritten. The set's numbers
+are CAM's durable claims; the table is machine fact; the setup view shows
+where they disagree.
 
 ```bash
-loobric list-tool-sets               # find the set id
-loobric link-machine <set> <machine> # link it to the machine
+loobric list-tool-sets               # find the set
+loobric use-set <machine> <set>      # make it the active setup
+loobric status <machine>             # READY, or what disagrees
 ```
 
-A set member with no matching tool-table entry keeps its own asserted number —
-nothing on the machine to inherit from. Resolve those by binding the
-corresponding entry (step 3) so the machine reports it.
+Each line the set claims reads `ok`, `requested` (not on the machine),
+`mismounted` (CAM says Tm, table has Tp — remount, or renumber in CAM and
+repost), `blocked` (a different tool holds the claimed number), or
+`pending bind` (mounted, identity unconfirmed — step 2/3). Table rows the set
+doesn't claim appear as **notes** — informational, never blocking. A claim
+disagreement is fixed through normal channels (mount/unload, or edit the CAM
+library); Loobric only witnesses.
 
 ### 5. Confirm the result
 
 ```bash
 loobric tool-table <machine>   # entries you linked read bound -> <record>
 loobric pending                # empty, or only items you deliberately left
-loobric list-tool-sets         # the set is present and machine-linked
+loobric status <machine>       # READY (or only differences you accept as notes)
 ```
 
 ### A note on data differences
@@ -120,13 +122,13 @@ bind to "fix" a geometry mismatch — it answers "same tool?", nothing more.
 - `loobric tool-table <machine>` — every entry you intended to link reads
   `bound -> <record>`.
 - `loobric pending` — empty, or only items you deliberately left.
-- `loobric list-tool-sets` — the set is present and machine-linked.
+- `loobric status <machine>` — READY, or only differences you understand.
 
 ## Related
 
 - [CLI.md](https://github.com/loobric/loobric-cli/blob/master/docs/CLI.md) — `pending`, `resolve`, `bind`, `tool-table`, `list-tools`,
-  `link-machine`.
+  `use-set`, `status`, `setup-history`.
 - [HOWTO_BUILD_CAM_SET_FROM_MACHINE.md](HOWTO_BUILD_CAM_SET_FROM_MACHINE.md)
   — when the machine has the tools and CAM is empty (control → CAM).
-- [TOOL_SCHEMA.md](TOOL_SCHEMA.md) §8 — install-once and number-inheritance
-  invariants.
+- [TOOL_SCHEMA.md](TOOL_SCHEMA.md) §8 — install-once and durable-claim
+  invariants; [ROUNDTRIP.md](ROUNDTRIP.md) — the full loop.

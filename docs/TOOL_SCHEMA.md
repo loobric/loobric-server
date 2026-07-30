@@ -260,20 +260,45 @@ client's representation* of a ToolSet, living in that set's
 
 `canonical`:
 - `name`.
-- `machine_id` — optional link: "this set is linked to this machine's tooling."
-  Null = a general/drawer set that makes no CAM↔CNC numbering claim.
 - `members` — an ordered list of `{ tool_record_id, number }`, where `number`
-  is a **canonical, provenance-tagged** position. The position is unique within
-  the set. When the set is `machine_id`-bound, member numbers are
-  **`observed`** (inherited from the machine's tool-table entries — the machine is fact, the
-  set conforms). When unbound, they are `asserted:<client>`.
+  is the member's **durable claim**: a canonical, provenance-tagged position
+  (`asserted:<client>`, or honestly `unknown`) — the T-number posted G-code
+  will call. **Observation never overwrites a claim** (MAPPING_PLAN §5.1):
+  when some machine runs the set as its active setup, reads additionally carry
+  a derived `observed` Field (the entry's number, verbatim) and a `state`
+  (`satisfied`/`requested`/`mismounted`/`blocked`/`pending bind`) alongside
+  the untouched claim; neither is ever stored.
 
-The per-client library numbers that used to live in `extra.freecad.numbers` are
-**promoted out** of the client section into canonical membership — a set's
-numbering is shared truth, not any one client's private copy.
+The machine relationship itself is a **setup** (`machine_set_maps` — a bare
+association row: machine, set, active/ended, attribution; one active per
+machine, DB-enforced). It is NOT a set field: the set is purely CAM-owned, and
+the pre-0.7.0 `machine_id` link is gone. The per-client library numbers that
+used to live in `extra.freecad.numbers` are **promoted out** of the client
+section into canonical membership — a set's numbering is shared truth, not any
+one client's private copy.
 
 ### 7.5 `Machine` — a controller
-`canonical`: `name`, `controller_type`, `definition` (axes/spindle/units/post).
+`canonical`: `name`, `controller_type`, `definition` (axes/spindle/units/post),
+plus two **capability sections** whose leaves are ordinary provenance-tagged
+Fields:
+
+- **`spindle`** — declared limits, not runtime telemetry: `max_rpm`, `min_rpm`,
+  `power` (rated; unit e.g. `kW`), `taper` (spindle nose interface, e.g. `R8`,
+  `BT30`, `HSK63A`).
+- **`coolant`** — what the machine *has*, not what is running: `flood`, `mist`,
+  `through_spindle` (boolean values).
+
+These exist because "what RPM can this machine turn?" is a question CAM (and
+agent sessions) must answer from the Machine record itself — not by
+archaeology over the tool list, and not by parsing one client's opaque
+`definition` blob. The capability vocabulary is deliberate (`extra="forbid"`):
+a new spindle/coolant field is ratified into the contract, never accreted via
+an assert to an unknown path (that's a 400).
+
+Like all machine canonical, capability fields move only through the **assert**
+door — a machine has no observe door. A future MTConnect bridge (agents can
+carry spindle limits as `Specification` elements in `/probe`) would assert
+these with its own actor, e.g. `asserted:mtconnect-bridge`.
 
 ### 7.6 Composition (ISO 13399)
 
@@ -393,11 +418,12 @@ hold; carry everything else through verbatim.*
   installed, its component instances are occupied by it; a component instance
   cannot be live in two installed assemblies at once. The schema permits this
   (composition is explicit); the enforcement lands with the assembly work.
-- **Number reconciliation.** For a `machine_id`-bound `ToolSet`, the machine's
-  tool-table entries are the source of truth (observation > assertion): member
-  numbers are inherited (`number = tool_number`). Cases the server cannot infer —
-  a set member with no machine entry, or two members claiming one entry — are surfaced to a
-  human (like the binding inbox), never silently renumbered.
+- **Number reconciliation.** For the machine's active setup, the tool table is
+  fact and the set's claims are compared against it at read time — but the
+  claim is **never renumbered by observation** (MAPPING_PLAN §5.1): agreement
+  reads `satisfied`; disagreement reads `mismounted`/`blocked`/`requested`/
+  `pending bind` with both numbers shown, surfaced to a human (the setup
+  view), never silently resolved. The server is never an interlock.
 
 ---
 

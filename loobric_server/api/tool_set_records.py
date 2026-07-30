@@ -7,9 +7,11 @@ ToolSetRecord facade — an agnostic named collection, sectioned
 (docs/TOOL_SCHEMA.md). NOT a FreeCAD library; a .fctl/Fusion lib/drawer is one
 client's representation in clients.<name>.data.
 
-Members carry a canonical, provenance-tagged `number`. When the set is linked to
-a machine (machine_id asserted), member numbers are inherited from that machine's
-entries — the machine is observed fact, the set conforms.
+Members carry a canonical, provenance-tagged `number` — the CAM side's durable
+claim, only ever changed by an assert (MAPPING_PLAN.md §5.1). The machine
+relationship is a setup (machine_set_maps, api/machine_set_maps.py), never a
+field on the set; when a setup is active, reads return each member's derived
+`state` and `observed` number alongside the untouched claim.
 """
 import copy
 from datetime import datetime, UTC
@@ -25,14 +27,16 @@ from loobric_server.database.schema import (
     User, ToolSetRecord as Row,
 )
 from loobric_server.audit import create_audit_log
-from loobric_server.binding_v2 import reconcile_set_membership
+from loobric_server.binding_v2 import (
+    reconcile_set_membership, active_maps_for_set, bridge_requested_claims,
+)
 from loobric_server.contract import (
     ToolSet, ToolSetCanonical, Provenance, UNKNOWN, LaneViolation, reject_out_of_lane,
 )
 
 router = APIRouter(prefix="/api/v1/tool-set-records", tags=["tool-set-records"])
 
-ASSERTABLE_PATHS = {"name", "machine_id"}
+ASSERTABLE_PATHS = {"name"}
 
 
 def _now() -> str:
@@ -46,7 +50,6 @@ def _iso(value) -> str:
 def _blank_canonical() -> dict:
     return {
         "name": {"value": None, "source": UNKNOWN},
-        "machine_id": {"value": None, "source": UNKNOWN},
         "members": [],
     }
 
@@ -69,17 +72,24 @@ def _response(row: Row) -> dict:
 
 
 def _read_response(db: Session, row: Row) -> dict:
-    """The GET projection. For a machine-bound set, each member is classified
-    against the machine's tool-table entries (loaded / requested / pending bind)
-    and loaded members inherit the entry's observed tool_number — derived at read
-    time, never persisted (docs/ROUNDTRIP.md). A non-machine-bound set is
-    returned unchanged."""
+    """The GET projection. When the set has an active setup, each member is
+    classified against that machine's tool-table entries and the entry's
+    observed number rides alongside — derived at read time, never persisted.
+    The stored claim (`number`) is returned verbatim in both cases: observation
+    overlays, it never overwrites (MAPPING_PLAN.md §5.1). A set with no active
+    setup is returned unchanged — every number is simply its claim.
+
+    A set may be active on several machines (the one-active constraint is per
+    machine); the projection reconciles against the longest-active one, and the
+    machine-scoped view (GET /machine-set-maps/status) is the
+    unambiguous surface."""
     doc = _doc(row)
-    if row.machine_id:
-        result = reconcile_set_membership(db, row)
+    maps = active_maps_for_set(db, row.user_id, row.id)
+    if maps:
+        result = reconcile_set_membership(db, row, maps[0].machine_id)
         doc["canonical"]["members"] = [
             {"tool_record_id": ms.tool_record_id, "number": ms.number,
-             "state": ms.state}
+             "observed": ms.observed, "state": ms.state}
             for ms in result.members
         ]
     ToolSet.model_validate(doc)
@@ -122,10 +132,6 @@ class MembersRequest(BaseModel):
     actor: str
 
 
-class RefreshRequest(BaseModel):
-    actor: Optional[str] = None
-
-
 # -- endpoints ----------------------------------------------------------------
 
 @router.post("")
@@ -138,7 +144,7 @@ def create_set(payload: CreateRequest, db: Session = Depends(get_db),
             "client_item_id": payload.client_item_id,
             "created_at": _now(), "updated_at": _now(), "data": payload.data or {},
         }
-    row = Row(machine_id=None, canonical=_blank_canonical(), clients=clients,
+    row = Row(canonical=_blank_canonical(), clients=clients,
               user_id=user.id, created_by=user.id, updated_by=user.id)
     db.add(row)
     db.flush()
@@ -212,8 +218,8 @@ def write_client_section(record_id: str, client: str, payload: dict,
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
                      user: User = Depends(door("assert"))):
-    """Assert `name` or the `machine_id` link. Linking a machine makes the set
-    machine-bound (its member numbers are then inherited from the machine's entries)."""
+    """Assert `name`. (The machine relationship is a setup —
+    POST /api/v1/machine-set-maps — not a set field.)"""
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
@@ -223,8 +229,6 @@ def assert_canonical(record_id: str, req: AssertRequest,
     canonical[req.path] = {"value": req.value, "source": Provenance.asserted(req.actor)}
     _validate_canonical(canonical)
     row.canonical = canonical
-    if req.path == "machine_id":
-        row.machine_id = req.value
     row.version += 1
     row.updated_by = user.id
     create_audit_log(session=db, user_id=user.id, operation="ASSERT",
@@ -237,15 +241,29 @@ def assert_canonical(record_id: str, req: AssertRequest,
 @router.post("/{record_id}/members")
 def set_members(record_id: str, req: MembersRequest, db: Session = Depends(get_db),
                 user: User = Depends(door("assert"))):
-    """Replace membership. A supplied number is asserted; an omitted one is
-    unknown (until inherited from a machine's entries, if the set is machine-bound)."""
+    """Replace membership; MERGE numbers (MAPPING_PLAN.md §5.1).
+
+    Membership is the CAM side's to replace. Numbers are durable claims: a
+    supplied number is asserted; an OMITTED number on a member the set already
+    holds keeps that member's stored claim — it is never nulled or overwritten
+    by a push that simply didn't carry it (the round-trip laundering fix). A
+    genuinely new member without a number is honestly unknown.
+
+    If the set is active on a machine (a setup), freshly asserted claims are
+    bridged against that machine's existing unbound entries — the CAM-first
+    ordering of the number-match proposal (slice 0b); the machine push covers
+    the machine-first ordering."""
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
+    stored = {m["tool_record_id"]: m.get("number")
+              for m in (row.canonical.get("members") or [])}
     members = []
     for m in req.members:
-        number = ({"value": m.number, "source": Provenance.asserted(req.actor)}
-                  if m.number is not None else {"value": None, "source": UNKNOWN})
+        if m.number is not None:
+            number = {"value": m.number, "source": Provenance.asserted(req.actor)}
+        else:
+            number = stored.get(m.tool_record_id) or {"value": None, "source": UNKNOWN}
         members.append({"tool_record_id": m.tool_record_id, "number": number})
     canonical = copy.deepcopy(row.canonical)
     canonical["members"] = members
@@ -256,53 +274,7 @@ def set_members(record_id: str, req: MembersRequest, db: Session = Depends(get_d
     create_audit_log(session=db, user_id=user.id, operation="MEMBERS",
                      entity_type="tool_set_record", entity_id=row.id,
                      changes={"count": len(members)})
+    for map_row in active_maps_for_set(db, user.id, row.id):
+        bridge_requested_claims(db, user, map_row.machine_id)
     db.commit()
     return _response(row)
-
-
-@router.post("/{record_id}/refresh")
-def refresh_from_machine(record_id: str, req: RefreshRequest = RefreshRequest(),
-                         db: Session = Depends(get_db),
-                         user: User = Depends(door("assert"))):
-    """Refresh a machine-bound set from its machine — a MERGE, not a replace.
-
-    This is the MACHINE-DRIVEN counterpart to set_members (POST /members, the
-    human "replace membership" operation). It runs `reconcile_set_membership`
-    (ROUNDTRIP_FIXES S1) and writes back what the machine observes:
-
-    - **loaded** members inherit the bound entry's observed `tool_number`
-      (observed provenance), persisted into canonical;
-    - **requested** members (no machine entry yet) are PRESERVED with their
-      asserted-preference / unknown number — never deleted;
-    - **pending bind** members surface the proposed entry's observed number.
-
-    The machine is authoritative for numbers/offsets, NEVER for membership: the
-    member set is conserved (no additions, no deletions). Ambiguities surfaced by
-    the engine (e.g. an observed number colliding with an asserted preference)
-    are returned under `ambiguities` rather than silently renumbered. 400 when
-    the set is not machine-bound (there is nothing to refresh against)."""
-    row = _owned(db, user, record_id)
-    if row is None:
-        raise HTTPException(status_code=404, detail="not found")
-    if not row.machine_id:
-        raise HTTPException(status_code=400,
-                            detail="set is not machine-bound; nothing to refresh")
-    result = reconcile_set_membership(db, row)
-    canonical = copy.deepcopy(row.canonical)
-    canonical["members"] = [
-        {"tool_record_id": ms.tool_record_id, "number": ms.number}
-        for ms in result.members
-    ]
-    _validate_canonical(canonical)
-    row.canonical = canonical
-    row.version += 1
-    row.updated_by = user.id
-    create_audit_log(session=db, user_id=user.id, operation="REFRESH",
-                     entity_type="tool_set_record", entity_id=row.id,
-                     changes={"count": len(result.members),
-                              "ambiguities": len(result.ambiguities),
-                              "actor": req.actor})
-    db.commit()
-    # A refresh report, not a bare record: the merged set plus any ambiguities
-    # the engine surfaced (kept out of the ToolSet doc, which forbids extras).
-    return {"set": _read_response(db, row), "ambiguities": result.ambiguities}

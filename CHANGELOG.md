@@ -3,6 +3,64 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.7.0] — 2026-07-29 (BREAKING: setups replace the set↔machine link)
+
+Design: `MAPPING_PLAN.md` (grilled & locked 2026-07-29). Pairs with
+loobric-cli 1.4.0; loobric-freecad and loobric-linuxcnc ship matching updates.
+
+### Added
+- **Setups (`machine_set_maps`)** — the transitory machine↔set relationship: a
+  bare association row (machine, set, active/ended, attribution; ONE active
+  per machine, enforced by a partial unique index; ended rows are permanent
+  history). `POST /api/v1/machine-set-maps` activates (`use-set`, atomically
+  ending the prior setup), `POST …/{id}/end` ends, `GET …` lists/filters.
+  Lifecycle rides the **bind** door — agent keys (`read sync assert`) and bare
+  controller keys (`read sync observe`) can never switch setups. Activation
+  changes NOTHING on either side. ACTIVATE/END are audited.
+- **The setup view** — `GET /api/v1/machine-set-maps/status?machine_id=…`:
+  derived at read time, stored nowhere. Headline `ready` (every claim
+  satisfied: mounted + claimed number + confirmed identity); per-claim states
+  `satisfied` / `requested` / `mismounted` / `blocked` (the wrong-tool-cuts
+  case, occupant named) / `pending bind`; unclaimed table rows as **notes**
+  (`unlisted` / `unknown tool`) — informational only, never counted against
+  readiness. The server is **never an interlock**.
+- **Durable claims (§5.1).** A set member's `number` is CAM's durable claim:
+  only ever changed by an assert. Reads carry the machine's `observed` number
+  and derived `state` ALONGSIDE the claim, never over it. The members door
+  merges: an omitted number keeps the stored claim (ends the round-trip that
+  laundered claims into observations).
+- **The CAM-first proposal bridge.** The 0.95 number-match proposal now also
+  fires when the claim arrives AFTER the entry exists (member assert or setup
+  activation), not only on the machine push.
+- Migration `0003_machine_set_maps`: existing `machine_id` links become setup
+  rows — per machine, the most recently updated linked set is `active`, the
+  rest are preserved as `ended` history; stored canonical loses `machine_id`;
+  the column is dropped.
+- Web UI: the Machines tab gains the setup band (READY/NOT READY, unmet
+  claims, notes, a use-set picker); Tool Sets show active-setup status and
+  per-member states; **Create tool set** claims the mounted numbers and
+  activates the setup.
+
+### Removed (BREAKING)
+- `tool_set_records.machine_id` (column, canonical field, and the
+  `machine_id` assert path — now a 400). Linking is `use-set`.
+- `POST /tool-set-records/{id}/refresh` — it persisted observed numbers into
+  stored claims, the server-side half of the laundering §5.1 forbids. Reads
+  always derive; there is nothing to refresh.
+- The `loaded` member state (→ `satisfied`) and the `number_collision`
+  ambiguity (→ the member-level `blocked` state).
+
+### Added (unrelated, same release)
+- **Canonical machine capability fields** (`MachineCanonical`): `spindle`
+  (`max_rpm`, `min_rpm`, `power`, `taper`) and `coolant` (`flood`, `mist`,
+  `through_spindle`) — provenance-tagged Fields set through the existing
+  assert door (`spindle.max_rpm` etc.). The canonical answer to "what RPM
+  can this machine turn?", born from agent sessions inferring spindle specs
+  by tool-list archaeology. Vocabulary is ratified, not accreted: an assert
+  to an unknown capability path is a 400 (`extra="forbid"`). Additive — no
+  migration; existing machine records validate unchanged.
+  (TOOL_SCHEMA.md §7.5, UBIQUITOUS_LANGUAGE.md **Machine**.)
+
 ## [0.6.1] — 2026-07-27
 
 ### Added

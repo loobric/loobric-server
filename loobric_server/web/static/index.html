@@ -285,8 +285,9 @@
 // Machines is the ONE binding surface — proposals (the old Inbox) are folded in
 // as a "pending review" band/filter on the entries themselves.
 const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["audit","Audit"],["account","Account"]];
-let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
-              machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{}, keys:[], me:null, users:[] };
+let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
+              machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{},
+              activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[] };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -388,6 +389,13 @@ async function refresh(){
       api("GET", "/tool-table-entry-records?machine_id="+rid(m)).then(t=>[rid(m),t.items]).catch(()=>[rid(m),[]])));
     state.entriesByMachine=Object.fromEntries(tables);
     state.entriesById={}; for(const entries of Object.values(state.entriesByMachine)) for(const s of entries) state.entriesById[rid(s)]=s;
+    // Setups: which set each machine is running (active map), and its derived
+    // setup view (ready / claims / notes) — computed server-side at read.
+    state.activeMaps = (await api("GET","/machine-set-maps?status=active").catch(()=>({items:[]}))).items||[];
+    state.mapByMachine = Object.fromEntries(state.activeMaps.map(x=>[x.machine_id,x]));
+    const recons = await Promise.all(machines.items.map(m =>
+      api("GET","/machine-set-maps/status?machine_id="+rid(m)).then(r=>[rid(m),r]).catch(()=>[rid(m),null])));
+    state.reconByMachine = Object.fromEntries(recons);
     // Admin-only: the account roster (how many accounts exist, and who they are).
     // Non-admins get a 403 here, so only fetch it for admins and tolerate failure.
     state.users = isAdmin(me)
@@ -438,7 +446,7 @@ function render(){
     </div>` : "";
   $("#view").innerHTML = banner + body;
 }
-function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; render(); refresh(); }
+function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; state.machineSel=null; render(); refresh(); }
 
 // ---- account data: demo seed + reset (the caller's own data only) -----------
 function accountIsEmpty(){
@@ -498,7 +506,7 @@ async function deleteRecord(id){ const t=state.tools.find(x=>rid(x)===id);
   try{ await api("DELETE","/tool-instance-records/"+id); toast("Deleted tool."); refresh(); }catch(e){ toast(e.message); } }
 async function deleteMachine(id){
   if(!(await confirmDialog(`Delete machine "${state.machineNames[id]}" and its tool table? Tool instances stay.`))) return;
-  try{ const r=await api("DELETE","/machine-records/"+id); toast(`Deleted machine (${r.entries_removed} entr${r.entries_removed===1?"y":"ies"}).`); refresh(); }catch(e){ toast(e.message); } }
+  try{ const r=await api("DELETE","/machine-records/"+id); state.machineSel=null; toast(`Deleted machine (${r.entries_removed} entr${r.entries_removed===1?"y":"ies"}).`); refresh(); }catch(e){ toast(e.message); } }
 async function deleteEntry(id){
   if(!(await confirmDialog("Remove this reported entry? If the controller pushes it again, it returns."))) return;
   try{ await api("DELETE","/tool-table-entry-records/"+id); toast("Removed entry."); refresh(); }catch(e){ toast(e.message); } }
@@ -524,22 +532,30 @@ async function createSetFromMachine(machineId){
   try{
     const sid=(await api("POST","/tool-set-records",{})).internal.id;   // no client section: the web UI isn't a data client
     await api("POST","/tool-set-records/"+sid+"/assert",{path:"name",value:name.trim(),actor:"human@web"});
-    await api("POST","/tool-set-records/"+sid+"/assert",{path:"machine_id",value:machineId,actor:"human@web"});
-    await api("POST","/tool-set-records/"+sid+"/members",{actor:"human@web",members:ids.map(id=>({tool_record_id:id}))});
-    toast(`Created "${name.trim()}" from ${mname} (${ids.length} tool(s)).`);
+    // Claim the numbers the machine currently shows, so the new set is
+    // immediately satisfied (mounted, at the claimed numbers, confirmed).
+    const numByInst={};
+    for(const s of (state.entriesByMachine[machineId]||[])){
+      const b=cf(s,"bound_instance_id"); if(b) numByInst[b]=cf(s,"tool_number");
+    }
+    await api("POST","/tool-set-records/"+sid+"/members",{actor:"human@web",
+      members:ids.map(id=>({tool_record_id:id, number:numByInst[id]}))});
+    await api("POST","/machine-set-maps",{machine_id:machineId, tool_set_id:sid});
+    toast(`Created "${name.trim()}" from ${mname} (${ids.length} tool(s)) and made it the active setup.`);
     state.tab="toolsets"; refresh();
   }catch(e){ toast(e.message); }
 }
-async function refreshSet(setId){
-  const s=state.toolsets.find(x=>rid(x)===setId), machineId=cf(s,"machine_id");
-  if(!machineId){ toast("This set isn't linked to a machine."); return; }
-  // A MERGE, not a replace: the machine owns numbers/offsets, never membership.
-  // Requested members (no machine entry yet) survive; only observed numbers change.
+// ---- setups: use-set / end (the transitory machine↔set relationship) --------
+// The machine this set is active on, if any (a set may serve several machines;
+// the one-active constraint is per machine).
+function setActiveOn(setId){ return state.activeMaps.filter(x=>x.tool_set_id===setId).map(x=>x.machine_id); }
+async function useSet(machineId, setId){
   try{
-    const r=await api("POST","/tool-set-records/"+setId+"/refresh",{actor:"human@web"});
-    const n=(r.set.canonical.members||[]).length, amb=(r.ambiguities||[]).length;
-    toast(`Refreshed from ${state.machineNames[machineId]||"machine"}: ${n} tool(s).`+
-          (amb?` ${amb} to review.`:"")); refresh();
+    if(setId){ await api("POST","/machine-set-maps",{machine_id:machineId, tool_set_id:setId});
+               toast("Setup switched. Nothing on either side was changed."); }
+    else{ const cur=state.mapByMachine[machineId];
+          if(cur){ await api("POST","/machine-set-maps/"+cur.id+"/end"); toast("Setup ended."); } }
+    refresh();
   }catch(e){ toast(e.message); }
 }
 // A suggested name for an instance: its own name, else the label of an entry it's bound in.
@@ -595,21 +611,33 @@ function renderToolSets(){
   if(state.setSel) return renderToolSetDetail();
   if(!state.toolsets.length) return `<div class="empty">No tool sets yet.</div>`;
   return state.toolsets.map(s=>{
-    const machine=cf(s,"machine_id"), members=(s.canonical.members||[]);
+    const activeOn=setActiveOn(rid(s)), members=(s.canonical.members||[]);
+    const where=activeOn.map(m=>esc(state.machineNames[m]||m.slice(0,8))).join(", ");
     return `<div class="card">
       <div class="row"><strong class="link-ish" onclick="openSet('${rid(s)}')">${esc(cf(s,"name")||"(unnamed)")}</strong>
         <span>${idLink(rid(s))}</span></div>
-      <div class="muted">${members.length} tool(s)${machine?" &middot; linked to "+esc(state.machineNames[machine]||machine.slice(0,8)):" &middot; not linked to a machine"}</div>
+      <div class="muted">${members.length} tool(s)${activeOn.length?" &middot; active setup on "+where:" &middot; not active on any machine &mdash; every number is provisional"}</div>
       <div class="row" style="margin-top:.6rem"><span class="rowact">
-        ${machine?`<button class="mini link" onclick="refreshSet('${rid(s)}')">Refresh from machine</button>`:""}
         <button class="unbind" onclick="deleteSet('${rid(s)}')">Delete</button></span></div>
     </div>`;
   }).join("");
 }
+// A member's per-line state label + detail, per the ratified vocabulary
+// (satisfied lines read "ok"; anything else is an unmet claim).
+function memberStateBadge(m){
+  const st=m.state, obs=(m.observed||{}).value, num=(m.number||{}).value;
+  if(st==null) return `<span class="pill info">provisional</span>`;
+  if(st==="satisfied") return `<span class="pill bound">ok</span>`;
+  const detail = st==="mismounted" ? ` CAM says T${num}; machine has it at T${obs}`
+    : st==="blocked" ? ` T${num} is occupied by a different tool`
+    : st==="pending bind" ? ` mounted, confirm identity`
+    : st==="requested" ? ` not on machine` : "";
+  return `<span class="pill unbound">${esc(st)}</span><span class="muted">${detail}</span>`;
+}
 function renderToolSetDetail(){
   const s=state.toolsets.find(x=>rid(x)===state.setSel);
   if(!s) return `<div class="empty">Tool set not found.<br><span class="link-ish" onclick="backToToolSets()">Back to tool sets</span></div>`;
-  const machine=cf(s,"machine_id");
+  const activeOn=setActiveOn(rid(s));
   const members=(s.canonical.members||[]).slice()
     .sort((a,b)=>(((a.number||{}).value)??1e9)-(((b.number||{}).value)??1e9));
   const rows = members.length ? members.map(m=>{
@@ -620,51 +648,130 @@ function renderToolSetDetail(){
     const numDisp=num.value!=null?`T${num.value}`:`<span class="unknownval">no #</span>`;
     return `<div class="frow">
       <span class="flabel">${numDisp} ${provBadge(num.source||"unknown")}</span>
-      <span class="fval"><strong>${esc(tname)}</strong>${shape?` <span class="muted">${esc(shape)}</span>`:""}${dia!=null?` <span class="muted">&#x2300;${dia}</span>`:""} ${idLink(tid)}</span>
+      <span class="fval"><strong>${esc(tname)}</strong>${shape?` <span class="muted">${esc(shape)}</span>`:""}${dia!=null?` <span class="muted">&#x2300;${dia}</span>`:""} ${idLink(tid)} ${memberStateBadge(m)}</span>
       <button class="mini del" onclick="removeMember('${rid(s)}','${tid}')">Remove</button>
     </div>`;
   }).join("") : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric add-to-set</code>.</div>`;
+  const where=activeOn.map(m=>esc(state.machineNames[m]||m.slice(0,8))).join(", ");
   return `<div class="row" style="margin-bottom:.6rem">
       <button class="mini link" onclick="backToToolSets()">&#x2190; Back to tool sets</button>
       <span class="rowact">
-        ${machine?`<button class="mini link" onclick="refreshSet('${rid(s)}')">Refresh from machine</button>`:""}
         <button class="unbind" onclick="deleteSet('${rid(s)}')">Delete</button></span></div>
     <div class="card">
       <div class="row"><strong>${esc(cf(s,"name")||"(unnamed)")}</strong>${idLink(rid(s),0)}</div>
-      <div class="muted" style="margin-top:.3rem">${members.length} tool(s)${machine?" &middot; linked to "+esc(state.machineNames[machine]||machine.slice(0,8))+" &middot; member numbers inherited from its tool table":" &middot; not linked to a machine"}</div>
-      <div class="explain" style="margin-top:.6rem">Each member shows its tool number and the <b>source</b> that vouches for it &mdash; ${provBadge("asserted")} declared, ${provBadge("observed")} inherited from a machine, ${provBadge("unknown")} no number yet.</div>
+      <div class="muted" style="margin-top:.3rem">${members.length} tool(s)${activeOn.length?" &middot; active setup on "+where:" &middot; not active on any machine &mdash; every number is provisional"}</div>
+      <div class="explain" style="margin-top:.6rem">Each member's number is the CAM side's <b>claim</b> &mdash; ${provBadge("asserted")} declared, ${provBadge("unknown")} none yet. When the set is a machine's active setup, each line also shows whether reality matches: <b>ok</b>, or the unmet-claim state. Claims are never overwritten by the machine.</div>
       <div class="section-h">Members</div>${rows}
     </div>`;
 }
 
-// ---- Machines (+ tool tables) ----------------------------------------------
+// ---- Machines: a LIST page (like Tool Sets), each opening one machine's page.
+function openMachine(id){ state.tab="machines"; state.machineSel=id; render(); }
+function backToMachines(){ state.machineSel=null; render(); }
+
 function renderMachines(){
+  if(state.machineSel) return renderMachineDetail();
   if(!state.machines.length) return `<div class="empty">No machines yet.<br><span class="muted">They register on first sync from a controller.</span></div>`;
   const pending = pendingEntries().length;
   const banner = pending
-    ? `<div class="explain">&#x26A0; <b>${pending}</b> tool-table entr${pending===1?"y has":"ies have"} a proposed tool awaiting your decision &mdash; <b>Same tool</b> binds the server's guess, <b>Different</b> rejects it, <b>Bind new</b> mints a fresh instance. <label style="margin-left:.5rem;white-space:nowrap"><input type="checkbox" ${state.pendingOnly?"checked":""} onclick="togglePending()"> only pending review</label></div>`
-    : (state.pendingOnly ? `<div class="explain">Nothing pending review. <label style="margin-left:.5rem"><input type="checkbox" checked onclick="togglePending()"> only pending review</label></div>` : "");
-  const cards = state.machines.map(m=>{
-    let entries=(state.entriesByMachine[rid(m)]||[]).slice().sort((a,b)=>(cf(a,"tool_number")||0)-(cf(b,"tool_number")||0));
-    if(state.pendingOnly) entries=entries.filter(s=>hasProposal(s));
-    if(state.pendingOnly && !entries.length) return "";
-    const body = entries.length ? entries.map(s=>entryRow(m,s)).join("")
-      : `<div class="muted">${state.pendingOnly?"nothing pending on this machine":"empty tool table"}</div>`;
+    ? `<div class="explain">&#x26A0; <b>${pending}</b> tool-table entr${pending===1?"y has":"ies have"} a proposed tool awaiting your decision &mdash; open the machine to resolve.</div>`
+    : "";
+  return banner + state.machines.map(m=>{
+    const mid=rid(m), entries=state.entriesByMachine[mid]||[], recon=state.reconByMachine[mid];
+    const setup = (recon && recon.active)
+      ? `${recon.ready?`<span class="pill bound">READY</span>`:`<span class="pill unbound">NOT READY</span>`} ${esc(recon.tool_set_name||"(unnamed)")}`
+      : `<span class="muted">no active setup</span>`;
     return `<div class="card">
-      <div class="row"><strong>${esc(state.machineNames[rid(m)])}</strong>
-        <span class="rowact">${idLink(rid(m))}<span class="muted">${esc(cf(m,"controller_type")||"")}</span>
-          <button class="mini create" onclick="createSetFromMachine('${rid(m)}')">Create tool set</button>
-          <button class="unbind" onclick="deleteMachine('${rid(m)}')">Delete machine</button></span></div>
-      ${body}</div>`;
+      <div class="row"><strong class="link-ish" onclick="openMachine('${mid}')">${esc(state.machineNames[mid])}</strong>
+        <span>${idLink(mid)}</span></div>
+      <div class="muted">${esc(cf(m,"controller_type")||"")}${cf(m,"controller_type")?" &middot; ":""}${entries.length} tool(s) &middot; ${setup}</div>
+    </div>`;
   }).join("");
-  return banner + cards;
 }
+
+// ---- one machine's page: ONE unified list of every line — table entries AND
+// the active setup's not-yet-mounted claims — each with its status inline.
+// No separate "needs fixing" block: ready and not-ready live in the same list
+// (color/font differentiation can come later). Display-only except binding
+// (the one act only Loobric can record) and the setup picker.
+function renderMachineDetail(){
+  const m=state.machines.find(x=>rid(x)===state.machineSel);
+  if(!m) return `<div class="empty">Machine not found.<br><span class="link-ish" onclick="backToMachines()">Back to machines</span></div>`;
+  const mid=rid(m), recon=state.reconByMachine[mid];
+  const active = recon && recon.active;
+
+  // Per-entry status from the setup view: claims consume their entry
+  // (satisfied/mismounted/pending bind); notes cover the rest.
+  const claimByEntry={}, noteByEntry={};
+  if(active){
+    for(const c of (recon.claims||[])) if(c.entry_id && c.state!=="blocked") claimByEntry[c.entry_id]=c;
+    for(const n of (recon.notes||[])) if(n.entry_id) noteByEntry[n.entry_id]=n;
+  }
+
+  let entries=(state.entriesByMachine[mid]||[]).slice();
+  if(state.pendingOnly) entries=entries.filter(s=>hasProposal(s));
+  const rows = entries.map(s=>({num: cf(s,"tool_number") ?? 1e9,
+                                html: entryRow(m, s, entryStatus(s, claimByEntry, noteByEntry))}));
+  // Claims with no entry of their own (requested; blocked — the wanted tool
+  // isn't mounted anywhere): they get a line in the SAME list, at their
+  // claimed number, so a pre-mount tool is never invisible.
+  if(active && !state.pendingOnly){
+    for(const c of (recon.claims||[])){
+      if(c.state==="requested" || c.state==="blocked")
+        rows.push({num:(c.number||{}).value ?? 1e9, html: claimRow(c)});
+    }
+  }
+  rows.sort((a,b)=>a.num-b.num);
+  const body = rows.length ? rows.map(r=>r.html).join("")
+    : `<div class="muted">${state.pendingOnly?"nothing pending on this machine":"empty tool table"}</div>`;
+
+  const picker = `<select class="mini" onchange="useSet('${mid}', this.value||null)">
+      <option value="">&mdash; no setup &mdash;</option>`+
+    state.toolsets.map(s=>`<option value="${rid(s)}" ${state.mapByMachine[mid]&&state.mapByMachine[mid].tool_set_id===rid(s)?"selected":""}>${esc(cf(s,"name")||rid(s).slice(0,8))}</option>`).join("")+
+    `</select>`;
+  const att = (recon||{}).attention||{};
+  const summary = active
+    ? `${recon.ready?`<span class="pill bound">READY</span>`:`<span class="pill unbound">NOT READY</span>`} <b>${esc(recon.tool_set_name||"(unnamed)")}</b> <span class="muted">&middot; ${att.important||0} need attention &middot; ${att.notes||0} note(s)</span>`
+    : `<span class="muted">No active setup &mdash; pick the tool set this machine is being set up for.</span>`;
+  const pendingHere = entries.some(s=>hasProposal(s)) || pendingEntries().length;
+  const filter = pendingHere
+    ? `<label style="white-space:nowrap"><input type="checkbox" ${state.pendingOnly?"checked":""} onclick="togglePending()"> only pending review</label>` : "";
+
+  return `<div class="row" style="margin-bottom:.6rem">
+      <button class="mini link" onclick="backToMachines()">&#x2190; Back to machines</button>
+      <span class="rowact">
+        <button class="mini create" onclick="createSetFromMachine('${mid}')">Create tool set</button>
+        <button class="unbind" onclick="deleteMachine('${mid}')">Delete machine</button></span></div>
+    <div class="card">
+      <div class="row"><strong>${esc(state.machineNames[mid])}</strong>
+        <span class="rowact">${idLink(mid)}<span class="muted">${esc(cf(m,"controller_type")||"")}</span></span></div>
+      <div class="row" style="margin-top:.5rem">${summary}<span class="rowact">${filter} ${picker}</span></div>
+      <div class="section-h">Tools</div>
+      ${body}</div>`;
+}
+
+// The status text for an entry row, from the setup view. "" when no setup is
+// active (the row then just shows its bind state, as before).
+function entryStatus(s, claimByEntry, noteByEntry){
+  const c=claimByEntry[rid(s)];
+  if(c){
+    if(c.state==="satisfied") return {label:"ok", ok:true};
+    if(c.state==="mismounted")
+      return {label:`mismounted &mdash; CAM says T${(c.number||{}).value}`, ok:false};
+    if(c.state==="pending bind") return {label:"pending bind", ok:false};
+  }
+  const n=noteByEntry[rid(s)];
+  if(n) return {label:esc(n.state), ok:null};   // unlisted / unknown tool: a note
+  return null;
+}
+
 // One row per tool-table entry. Binding lives here (the single binding surface):
 // an unbound entry the server proposed a match for offers Same tool / Different /
 // Bind new — the SAME options the old Inbox had — so you can confirm the server's
 // guess instead of being funnelled into minting a duplicate. An unbound entry
-// with no proposed match just offers Bind new.
-function entryRow(m,s){
+// with no proposed match just offers Bind new. `status` (from the setup view)
+// rides inline in the same row — never a separate list.
+function entryRow(m,s,status){
   const bound=cf(s,"bound_instance_id"), dia=cf(s,"offsets.diameter");
   const p = bound ? null : state.proposalByEntry[rid(s)];
   const matched = p && p.proposed_instance && p.proposed_instance.id;
@@ -681,16 +788,39 @@ function entryRow(m,s){
   } else {
     actions = `<button class="mini create" onclick="bindNew('${rid(s)}')">Bind new</button>`;
   }
+  const badge = status
+    ? (status.ok===true ? `<span class="pill bound">ok</span>`
+       : status.ok===false ? `<span class="pill unbound">${status.label}</span>`
+       : `<span class="pill info">${status.label}</span>`)
+    : "";
   return `<div class="trow">
     <div class="tinfo">
       <span class="tnum link-ish" onclick="showById('${rid(s)}')">T${cf(s,"tool_number")}</span>
       <span>${esc(entryName(s)||"")}</span>
       <span class="muted">${dia!=null?"&#x2300;"+dia:""}</span>
       ${bound?`<span class="pill bound">${esc(state.toolNames[bound]||bound.slice(0,8))}</span>`:`<span class="pill unbound">unbound</span>`}
+      ${badge}
       ${guess}
     </div>
     <div class="rowact">${actions}
       <button class="mini del" onclick="deleteEntry('${rid(s)}')">Remove</button></div>
+  </div>`;
+}
+
+// A claim with no mounted tool of its own (requested / blocked): a line in the
+// SAME list at its claimed number — not a separate section.
+function claimRow(c){
+  const num=(c.number||{}).value;
+  const detail = c.state==="requested"
+    ? `requested &mdash; not on machine`
+    : `blocked &mdash; T${num} occupied by <b>${esc((c.blocked_by&&c.blocked_by.name)||"another tool")}</b>`;
+  return `<div class="trow">
+    <div class="tinfo">
+      <span class="tnum">${num!=null?"T"+num:"?"}</span>
+      <span>${esc(c.name||c.tool_record_id.slice(0,8))}</span>
+      <span class="pill unbound">${esc(c.state)}</span>
+      <span class="muted">${detail}</span>
+    </div>
   </div>`;
 }
 

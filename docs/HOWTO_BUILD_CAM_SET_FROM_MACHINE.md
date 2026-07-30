@@ -93,43 +93,41 @@ CAM library is just *one client's view* of a shared tool set (see
 [TOOL_SCHEMA.md](TOOL_SCHEMA.md) §7.4). Each imported tool keeps a link back to
 its server record.
 
-### 7. Link the set to the machine
+### 7. Make the set the machine's active setup
 
-A tool set built from a specific machine should record where it came from. A
-tool set carries an optional `machine_id` link to the Machine it belongs to.
-**When a set is linked to a machine, its member numbers are inherited from the
-machine's tool-table entries** — so the set and the control agree on T-numbers
-without any extra step.
-
-Your CAM client may set this link when it creates the set. If not, `loobric`
-links it for you:
+A tool set built from a specific machine should claim the numbers the machine
+already shows, and become the machine's **active setup** so the two are
+checked against each other from now on:
 
 ```bash
 # find the set id
 loobric list-tool-sets
 
-# link the set to the machine
-loobric link-machine <set> <machine>
+# make it the machine's active setup
+loobric use-set <machine> <set>
 ```
+
+(When the web UI's **Create tool set** built the set, it already claimed the
+mounted numbers and activated the setup — this step is then done.)
 
 ### 8. Confirm the result
 
 ```bash
 loobric tool-table <machine>   # every entry reads bound -> <record>
-loobric list-tool-sets         # the set is present and machine-linked
+loobric status <machine>       # READY - every claim satisfied
 ```
 
-Because the set is linked to the machine, its member numbers follow the
-machine's tool-table entries. In your CAM client, the imported tools should
-match the machine's tools, T-number for T-number.
+The set's member numbers are CAM's durable claims, and `status` proves they
+agree with the machine, T-number for T-number. If the machine ever changes —
+a tool moved, swapped, or removed — the same command shows exactly which
+claim no longer holds.
 
 ## Confirm success
 
 - `loobric tool-table <machine>` — every entry you turned into a record reads
   `bound -> <record>`.
 - `loobric list-tools` — one record per machine tool.
-- `loobric list-tool-sets` — the CAM tool set shows up, machine-linked, with the
-  expected member count.
+- `loobric status <machine>` — READY, with the expected member count.
 - In your CAM client, the imported tool set matches the machine's tools.
 
 ## Related

@@ -76,6 +76,47 @@ def test_sync_cannot_touch_internal_or_canonical(solo_client, forbidden):
 
 
 @pytest.mark.contract
+def test_assert_sets_spindle_and_coolant_capability_fields(solo_client):
+    """Spindle/coolant capability is canonical on the Machine — the answer to
+    'what RPM can this machine turn?' lives here, not in tool-list archaeology.
+    Dotted paths land as provenance-tagged leaves and survive a GET."""
+    rid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    for path, value, unit in (
+        ("spindle.max_rpm", 24000, "rpm"),
+        ("spindle.min_rpm", 100, "rpm"),
+        ("spindle.power", 2.2, "kW"),
+        ("spindle.taper", "R8", None),
+        ("coolant.flood", True, None),
+        ("coolant.mist", False, None),
+        ("coolant.through_spindle", False, None),
+    ):
+        body = {"path": path, "value": value, "actor": "human@inbox"}
+        if unit:
+            body["unit"] = unit
+        r = solo_client.post(f"{BASE}/{rid}/assert", json=body)
+        assert r.status_code == 200, r.text
+    doc = conforms(solo_client.get(f"{BASE}/{rid}").json())
+    spindle = doc["canonical"]["spindle"]
+    assert spindle["max_rpm"] == {"value": 24000, "unit": "rpm",
+                                  "source": "asserted:human@inbox"}
+    assert spindle["taper"]["value"] == "R8"
+    coolant = doc["canonical"]["coolant"]
+    assert coolant["flood"]["value"] is True
+    assert coolant["through_spindle"]["value"] is False
+
+
+@pytest.mark.contract
+def test_assert_rejects_an_unratified_capability_path(solo_client):
+    """The capability vocabulary is deliberate: an assert to a spindle field the
+    schema doesn't know is a loud 400, not a silently accreted key."""
+    rid = solo_client.post(BASE, json={}).json()["internal"]["id"]
+    r = solo_client.post(f"{BASE}/{rid}/assert",
+                         json={"path": "spindle.horsepower", "value": 3,
+                               "actor": "human@inbox"})
+    assert r.status_code == 400, r.text
+
+
+@pytest.mark.contract
 def test_assert_sets_name_and_controller_type_and_round_trips(solo_client):
     """A machine's identity is asserted (declared), never observed. Name and
     controller_type land with asserted:<actor> provenance and survive a GET."""

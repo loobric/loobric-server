@@ -25,6 +25,7 @@ from loobric_server.contract.models import (
     # canonical shapes
     Geometry, InstanceCanonical, CatalogCanonical, EntryCanonical,
     EntryOffsets, ToolSetCanonical, SetMember, MachineCanonical,
+    MachineSpindle, MachineCoolant,
     # composition (ISO 13399)
     Component, ITEM_TYPES, COMPONENT_ROLES,
     # media
@@ -39,6 +40,7 @@ __all__ = [
     "LaneViolation", "reject_out_of_lane",
     "Geometry", "InstanceCanonical", "CatalogCanonical", "EntryCanonical",
     "EntryOffsets", "ToolSetCanonical", "SetMember", "MachineCanonical",
+    "MachineSpindle", "MachineCoolant",
     "Component", "ITEM_TYPES", "COMPONENT_ROLES",
     "MediaRef", "MEDIA_ROLES",
     "ToolInstanceRecord", "ToolCatalogRecord", "ToolTableEntry", "ToolSet",

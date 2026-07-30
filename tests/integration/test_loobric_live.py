@@ -92,7 +92,14 @@ def test_full_loop_through_cli(cli, capsys):
 def test_machines_and_sets(cli, capsys):
     cli_main.create_machine("millstone")
     cli_main.create_set("Drawer A")
-    cli_main.link_machine("Drawer A", "millstone")
+    cli_main.use_set("millstone", "Drawer A")
+    assert "now set up for" in capsys.readouterr().out
+    cli_main.setup_status("millstone")
+    out = capsys.readouterr().out
+    assert "millstone — Drawer A" in out
+    assert "READY" in out                    # empty set: no unmet claims
+    cli_main.setup_history("millstone")
+    assert "active" in capsys.readouterr().out
     cli_main.list_machines()
     assert "millstone" in capsys.readouterr().out
     cli_main.list_tool_sets()

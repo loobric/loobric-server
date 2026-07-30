@@ -345,27 +345,62 @@ class EntryCanonical(BaseModel):
 
 
 class SetMember(BaseModel):
-    """A tool set member: which tool, at which canonical position."""
+    """A tool set member: which tool, at which claimed position.
+
+    `number` is the member's durable CAM-side claim (asserted, or unknown) —
+    it is only ever changed by an assert, never overwritten by observation
+    (MAPPING_PLAN.md §5.1). `observed` and `state` are derived at read time
+    against the machine the set is currently active on (its setup) and are
+    never stored:
+
+    - `observed` — the tool_number Field of the machine entry actually holding
+      this member's instance (or the entry at the claimed number, for a
+      pending bind), verbatim with its observed provenance.
+    - `state` — "satisfied" | "mismounted" | "blocked" | "pending bind" |
+      "requested". Both absent (None) when no setup maps the set to a machine.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     tool_record_id: str
-    number: Field                      # observed when machine-bound; else asserted
-    # Derived at read time for a machine-bound set (never stored): the member's
-    # state against the machine's tool-table entries — "loaded" | "requested" |
-    # "pending bind". Absent (None) for a set with no machine link.
-    state: Optional[str] = None
+    number: Field                      # the claim: asserted, or unknown
+    observed: Optional[Field] = None   # derived at read time; never stored
+    state: Optional[str] = None        # derived at read time; never stored
 
 
 class ToolSetCanonical(BaseModel):
-    """An agnostic named collection. `machine_id` (optional) links it to a
-    machine whose entries its member numbers then inherit."""
+    """An agnostic named collection — purely CAM-owned. The machine
+    relationship lives on the setup (machine_set_maps), never on the set."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Field
-    machine_id: Field                  # provenance-tagged; unknown for a general set
     members: List[SetMember] = []
+
+
+class MachineSpindle(BaseModel):
+    """Spindle capability — declared limits, not runtime telemetry. The
+    canonical home for what CAM (and agent sessions) need to reason about
+    feeds/speeds without tool-list archaeology. `extra="forbid"`: capability
+    vocabulary is deliberate — new fields are ratified, not accreted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_rpm: Optional[Field] = None
+    min_rpm: Optional[Field] = None
+    power: Optional[Field] = None      # rated power; unit e.g. "kW"
+    taper: Optional[Field] = None      # spindle nose interface, e.g. "R8", "BT30", "HSK63A"
+
+
+class MachineCoolant(BaseModel):
+    """Coolant capability flags — what the machine HAS, not what is running.
+    Each present leaf is a provenance-tagged Field with a boolean value."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    flood: Optional[Field] = None
+    mist: Optional[Field] = None
+    through_spindle: Optional[Field] = None
 
 
 class MachineCanonical(BaseModel):
@@ -374,6 +409,8 @@ class MachineCanonical(BaseModel):
     name: Field
     controller_type: Optional[Field] = None
     definition: Optional[Field] = None
+    spindle: MachineSpindle = MachineSpindle()
+    coolant: MachineCoolant = MachineCoolant()
 
 
 # ---------------------------------------------------------------------------

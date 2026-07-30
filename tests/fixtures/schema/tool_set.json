@@ -10,17 +10,18 @@
       "value": "millstone tools",
       "source": "asserted:freecad"
     },
-    "machine_id": {
-      "value": "b70384d9-ea7e-495e-b72e-f50d7507e450",
-      "source": "asserted:human"
-    },
     "members": [
       {
         "tool_record_id": "dc6c3faf-d8ea-4846-9666-b85934cdb08d",
         "number": {
           "value": 1,
+          "source": "asserted:freecad"
+        },
+        "observed": {
+          "value": 1,
           "source": "observed:linuxcnc@millstone"
-        }
+        },
+        "state": "satisfied"
       }
     ]
   },

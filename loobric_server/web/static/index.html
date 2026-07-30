@@ -1136,7 +1136,8 @@ function renderAccount(){
         ${legacy?'<span class="pill bad" title="Created before scoped keys — now READ-ONLY. Create a new key with the scopes you need.">legacy &middot; read-only</span>':""}
         ${active?"":'<span class="pill bad">revoked</span>'}
       </span>
-      ${active?`<button class="mini del" onclick="revokeKey('${esc(k.id)}','${esc(k.name||"")}')">Revoke</button>`:""}
+      ${active?`<button class="mini del" onclick="revokeKey('${esc(k.id)}','${esc(k.name||"")}')">Revoke</button>`
+              :`<button class="mini del" onclick="deleteKey('${esc(k.id)}','${esc(k.name||"")}')">Delete</button>`}
     </div>`;
   }).join("") : `<div class="muted" style="padding:.45rem 0">No API keys yet.</div>`;
   return `
@@ -1233,6 +1234,12 @@ function copyKey(){ const el=$("#kn_value"); if(!el) return;
 async function revokeKey(id, name){
   if(!(await confirmDialog(`Revoke API key "${name||String(id).slice(0,8)}"? Any client using it stops working immediately.`))) return;
   try{ await api("DELETE","/auth/keys/"+id); toast("Key revoked."); refresh(); }catch(e){ toast(e.message); }
+}
+// Deleting is only offered on an already-revoked key (two deliberate steps —
+// a working credential can never go straight to gone). Audit rows keep the id.
+async function deleteKey(id, name){
+  if(!(await confirmDialog(`Permanently delete revoked key "${name||String(id).slice(0,8)}"? Its audit history keeps the id, but the key row is gone for good.`))) return;
+  try{ await api("DELETE","/auth/keys/"+id+"?purge=true"); toast("Key deleted."); refresh(); }catch(e){ toast(e.message); }
 }
 
 function openChangePw(){

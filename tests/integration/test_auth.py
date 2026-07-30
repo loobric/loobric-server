@@ -130,6 +130,35 @@ def test_revoke_api_key(client, disable_auth):
 
 
 @pytest.mark.integration
+def test_delete_revoked_api_key(client, disable_auth):
+    """Deleting is two deliberate steps: ?purge=true is refused (409) while
+    the key is active, removes the row once it is revoked, and the key then
+    vanishes from the list. A working credential can never go straight to
+    gone in one call."""
+    key_id = client.post("/api/v1/auth/keys",
+                         json={"name": "Key to Delete",
+                               "scopes": ["read"]}).json()["id"]
+
+    # Purging an ACTIVE key is refused — revoke first.
+    r = client.delete(f"/api/v1/auth/keys/{key_id}?purge=true")
+    assert r.status_code == 409
+    assert "revoke" in r.json()["detail"]
+
+    assert client.delete(f"/api/v1/auth/keys/{key_id}").status_code == 204
+    # Revoked keys stay listed (the audit anchor) until deleted...
+    assert key_id in [k["id"] for k in
+                      client.get("/api/v1/auth/keys").json()]
+    # ...then the purge removes the row for good.
+    assert client.delete(
+        f"/api/v1/auth/keys/{key_id}?purge=true").status_code == 204
+    assert key_id not in [k["id"] for k in
+                          client.get("/api/v1/auth/keys").json()]
+    # Gone means gone: a second purge is a 404.
+    assert client.delete(
+        f"/api/v1/auth/keys/{key_id}?purge=true").status_code == 404
+
+
+@pytest.mark.integration
 def test_authenticated_request_with_valid_key(client, disable_auth):
     """Test making authenticated request with valid API key.
     

@@ -256,3 +256,49 @@ def test_solo_mode_passes_everything(solo_client):
     rid = r.json()["internal"]["id"]
     assert solo_client.delete(
         f"{BASE}/tool-catalog-records/{rid}").status_code == 200
+
+
+# -- machine self-registration: the observe-or-assert amendment (2026-07-30) --
+
+def test_controller_key_can_self_register_its_machine(session_client):
+    """The controller preset (read sync observe) must survive FIRST CONTACT:
+    loobric-linuxcnc's first run creates the MachineRecord and asserts its
+    name/controller_type before it can push a single entry. Registration
+    rides observe OR assert (machine-records only)."""
+    h = _key(session_client, ["read", "sync", "observe"], "cnc")
+    session_client.cookies.clear()
+
+    r = session_client.post(f"{BASE}/machine-records", json={}, headers=h)
+    assert r.status_code == 200, r.text
+    mid = r.json()["internal"]["id"]
+    r = session_client.post(f"{BASE}/machine-records/{mid}/assert",
+                            json={"path": "name", "value": "mill01",
+                                  "actor": "linuxcnc"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["canonical"]["name"]["source"] == "asserted:linuxcnc"
+    # ...and the same key pushes the table (observe door), completing first run.
+    r = session_client.post(f"{BASE}/tool-table-entry-records/sync", json={
+        "machine_id": mid, "client": "linuxcnc", "machine_name": "mill01",
+        "entries": [{"tool_number": 1, "offsets": {}}]}, headers=h)
+    assert r.status_code == 200, r.text
+
+
+def test_observe_key_still_cannot_assert_tool_data(session_client):
+    """The or-mapping is machine-records-only: an observe key remains unable
+    to assert canonical facts on tool records — the blast radius of a
+    shop-floor key does not widen past the machine's own identity."""
+    iid = session_client.post(f"{BASE}/tool-instance-records",
+                              json={}).json()["internal"]["id"]
+    sid = session_client.post(f"{BASE}/tool-set-records",
+                              json={}).json()["internal"]["id"]
+    h = _key(session_client, ["read", "sync", "observe"], "cnc2")
+    session_client.cookies.clear()
+
+    r = session_client.post(f"{BASE}/tool-instance-records/{iid}/assert",
+                            json={"path": "name", "value": "x",
+                                  "actor": "linuxcnc"}, headers=h)
+    assert r.status_code == 403 and "assert" in r.json()["detail"]
+    r = session_client.post(f"{BASE}/tool-set-records/{sid}/assert",
+                            json={"path": "name", "value": "x",
+                                  "actor": "linuxcnc"}, headers=h)
+    assert r.status_code == 403 and "assert" in r.json()["detail"]

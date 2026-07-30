@@ -629,13 +629,20 @@ def list_keys(db: Session = Depends(get_db), user: User = Depends(get_authentica
 
 
 @router.delete("/keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
-def revoke_key(key_id: str, db: Session = Depends(get_db), user: User = Depends(session_or_solo_only())):
-    """Revoke an API key (soft delete; the key must belong to the caller).
+def revoke_key(key_id: str, purge: bool = False, db: Session = Depends(get_db),
+               user: User = Depends(session_or_solo_only())):
+    """Revoke an API key — or, with ``purge=true``, delete a REVOKED one.
+
+    Two deliberate steps, never one: the default DELETE revokes (soft — the
+    row stays as the audit trail's anchor and remains visible in the key
+    list); ``purge=true`` permanently removes an already-revoked key's row
+    and is refused (409) while the key is still active, so a single call can
+    never take a working credential straight to gone. Audit rows referencing
+    the key keep its id string — history survives the row.
 
     Args:
-        key_id: API key ID to revoke
-        db: Database session
-        user: Authenticated user
+        key_id: API key ID (must belong to the caller)
+        purge: permanently delete; requires the key to be revoked already
 
     Returns:
         None: 204 No Content on success
@@ -646,6 +653,16 @@ def revoke_key(key_id: str, db: Session = Depends(get_db), user: User = Depends(
     # which key ids exist for other users.
     if api_key is None or api_key.user_id != user.id:
         raise HTTPException(status_code=404, detail=f"API key {key_id} not found")
+    if purge:
+        if api_key.is_active:
+            raise HTTPException(
+                status_code=409,
+                detail="key is still active — revoke it first, then delete")
+        try:
+            delete_api_key(db, key_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return
     try:
         revoke_api_key(db, key_id)
     except ValueError as e:

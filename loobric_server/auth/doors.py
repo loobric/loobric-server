@@ -89,6 +89,38 @@ def door(*required: str):
     return dependency
 
 
+def door_any(*alternatives: str):
+    """Dependency factory: authenticate AND require AT LEAST ONE of these
+    door scopes. The rare or-shaped mapping — used where one act legitimately
+    belongs to two credential kinds (machine self-registration: the controller
+    key's `observe` OR a human/agent `assert`). Prefer `door()`; every use of
+    this is a scope-mapping decision that belongs in SCOPES_PLAN.md."""
+    unknown = [d for d in alternatives if d not in DOORS]
+    if unknown:                                   # programmer error, not 403
+        raise ValueError("unknown door(s): %r" % unknown)
+
+    from loobric_server.api.auth import get_authenticated_user
+
+    def dependency(request: Request,
+                   user=Depends(get_authenticated_user)):
+        channel = getattr(request.state, "auth_channel", None)
+        if channel != "api-key":
+            return user                           # session / solo / unset
+        scopes = getattr(request.state, "scopes", [])
+        held = effective_doors(scopes)
+        if held.intersection(alternatives):
+            return user
+        if is_legacy(scopes):
+            raise HTTPException(status_code=403, detail=LEGACY_DETAIL)
+        raise HTTPException(
+            status_code=403,
+            detail="This API key lacks the %r scope (any one suffices). "
+                   "Create a key that grants one, or use the Web UI."
+                   % (list(alternatives),))
+
+    return dependency
+
+
 def session_or_solo_only():
     """Dependency: authenticate but refuse API-key auth outright.
 

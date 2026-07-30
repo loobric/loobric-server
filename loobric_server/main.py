@@ -134,7 +134,24 @@ def create_app() -> FastAPI:
     # Web inbox (loobric-server#6): one static file, no build step. Auth is
     # enforced by the API the page calls, not by the page itself.
     static_dir = Path(__file__).parent / "web" / "static"
-    app.mount("/ui", StaticFiles(directory=str(static_dir), html=True), name="ui")
+
+    class RevalidatedStaticFiles(StaticFiles):
+        """StaticFiles + `Cache-Control: no-cache` on HTML. Without an explicit
+        cache policy, browsers apply HEURISTIC freshness to the bare
+        Last-Modified and keep serving a stale /ui/ for days after a deploy —
+        testers then drive a NEW server with an OLD page (e.g. the pre-0.6.0
+        key dialog whose "read write" scopes every 0.6.0+ server rejects).
+        no-cache means "revalidate every load": the conditional GET costs a
+        304, and a redeploy is picked up on the next plain refresh."""
+
+        async def get_response(self, path, scope):
+            response = await super().get_response(path, scope)
+            if response.headers.get("content-type", "").startswith("text/html"):
+                response.headers["Cache-Control"] = "no-cache"
+            return response
+
+    app.mount("/ui", RevalidatedStaticFiles(directory=str(static_dir), html=True),
+              name="ui")
 
     @app.get("/", include_in_schema=False)
     async def root_redirect():

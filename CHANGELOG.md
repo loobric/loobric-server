@@ -3,6 +3,34 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [Unreleased]
+
+### Added
+- **Revoked API keys can be deleted.** `DELETE /auth/keys/{id}?purge=true`
+  permanently removes a key row — refused with 409 while the key is still
+  active (revoke first: two deliberate steps, so a working credential can
+  never go straight to gone). Session/solo only, like all key management.
+  The web UI's key list shows **Delete** on revoked keys (Revoke stays on
+  active ones). Audit rows keep the key's id string; history survives the
+  row.
+
+### Fixed
+- **A controller key can self-register its machine again** (SCOPES_PLAN
+  amendment 2026-07-30). The controller preset (`read sync observe`) 403'd on
+  FIRST CONTACT: loobric-linuxcnc's first run creates the MachineRecord and
+  asserts its name/controller_type, and both endpoints demanded `assert`.
+  `POST /machine-records` and `POST /machine-records/{id}/assert` now accept
+  **`observe` OR `assert`** (new `door_any`, machine-records only — an
+  observe key still cannot assert tool data anywhere else; values stay
+  stamped `asserted:<actor>`, scope ≠ provenance).
+- **The web UI no longer goes stale in the browser after a deploy.** `/ui/`
+  HTML was served with only `Last-Modified`, so browsers applied heuristic
+  freshness and kept showing an old page for days — e.g. the pre-0.6.0 key
+  dialog (default scopes "read write") against a server that now rejects
+  non-door scopes. HTML responses now carry `Cache-Control: no-cache`:
+  browsers revalidate every load (a cheap 304) and pick up a redeploy on the
+  next plain refresh — no hard-refresh folklore required.
+
 ## [0.7.0] — 2026-07-29 (BREAKING: setups replace the set↔machine link)
 
 Design: `MAPPING_PLAN.md` (grilled & locked 2026-07-29). Pairs with

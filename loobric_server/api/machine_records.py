@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from loobric_server.api.auth import get_db, get_authenticated_user
-from loobric_server.auth.doors import door
+from loobric_server.auth.doors import door, door_any
 from loobric_server.database.schema import User, MachineRecord as Row
 from loobric_server.audit import create_audit_log
 from loobric_server.contract import (
@@ -117,10 +117,15 @@ class AssertRequest(BaseModel):
 
 @router.post("")
 def create_machine(payload: CreateRequest, db: Session = Depends(get_db),
-                   user: User = Depends(door("assert"))):
+                   user: User = Depends(door_any("observe", "assert"))):
     """Mint a machine. Canonical starts all-unknown (name only); an optional
-    initial client section may be seeded. Canonical is populated only via the
-    assert door thereafter."""
+    initial client section may be seeded.
+
+    Doors: `assert` OR `observe` (SCOPES_PLAN amendment, 2026-07-30) — a
+    controller key (read sync observe) must be able to SELF-REGISTER on first
+    contact; that registration is the controller reporting its own existence.
+    The or-mapping is machine-records-only: an observe key still cannot
+    assert tool data anywhere else."""
     clients = {}
     if payload.client:
         clients[payload.client] = {
@@ -215,10 +220,15 @@ def write_client_section(record_id: str, client: str, payload: dict,
 @router.post("/{record_id}/assert")
 def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
-                     user: User = Depends(door("assert"))):
+                     user: User = Depends(door_any("observe", "assert"))):
     """Deliberately declare a canonical value (name, controller_type, the post
     definition). A machine's identity is declared, never measured — there is no
-    observe door here. Audited; stamps source asserted:<actor>."""
+    observe door here; the value is stamped asserted:<actor> regardless of
+    which scope let the caller in.
+
+    Doors: `assert` OR `observe` (SCOPES_PLAN amendment, 2026-07-30) — the
+    controller's first-run self-registration asserts name/controller_type
+    with its observe-scoped key. Machine-records-only; see create_machine."""
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")

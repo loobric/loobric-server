@@ -3,7 +3,7 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
-## [Unreleased]
+## [0.7.1] — 2026-07-30
 
 ### Added
 - **Revoked API keys can be deleted.** `DELETE /auth/keys/{id}?purge=true`

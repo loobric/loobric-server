@@ -295,6 +295,7 @@ class InstanceCanonical(BaseModel):
     components: Optional[Field] = None    # list[Component] when an assembly
     media: Optional[Field] = None         # list[MediaRef]; bytes in the blob store
     geometry: Geometry = Geometry()
+    usage: Optional["InstanceUsage"] = None  # derived:usage-ledger only (§7.8)
 
     @model_validator(mode="after")
     def _composition(self) -> "InstanceCanonical":
@@ -342,6 +343,21 @@ class EntryCanonical(BaseModel):
     bound_instance_id: Field           # the physical tool in the entry
     description: Optional[Field] = None  # the table comment (observed label), e.g. "Probe"
     offsets: EntryOffsets = EntryOffsets()
+    # The controller's own tool-life counter, verbatim (§7.8): that machine's
+    # ledger for this row, nothing more. Observed; resets when the
+    # controller's does. The usage ledger turns its deltas into attributed
+    # contributions — this field is never a tool's total.
+    usage_hours: Optional[Field] = None
+
+
+class InstanceUsage(BaseModel):
+    """Lifetime usage on a physical tool (§7.8). Always derived — the source
+    is the usage ledger and no door writes it directly; it decomposes into
+    per-machine contributions on demand."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hours: Optional[Field] = None
 
 
 class SetMember(BaseModel):

@@ -41,6 +41,14 @@ router = APIRouter(prefix="/api/v1/tool-instance-records", tags=["tool-instance-
 # per-client scope manifest (docs/TOOL_SCHEMA.md §10) lands with the clients.
 OBSERVABLE_PATHS = {"geometry.diameter", "geometry.length", "status"}
 
+# Ratified status vocabulary (2026-08-04): `retired` — a valid record of a
+# tool no longer in service (distinct from DELETE, which is for records that
+# should never have existed). Absence of status = in service. Values are
+# ratified, not accreted (the machine-capability precedent): anything else is
+# a 400. `retired` is an administrative judgment, so it is ASSERT-only — no
+# machine can measure retirement, and no observable status values exist yet.
+STATUS_VALUES = {"retired"}
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -125,6 +133,10 @@ class ObserveRequest(BaseModel):
     unit: Optional[str] = None
     client: str
     machine: str
+
+
+class LabelRequest(BaseModel):
+    code: str
 
 
 # ---------------------------------------------------------------------------
@@ -214,6 +226,21 @@ def assert_canonical(record_id: str, req: AssertRequest,
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
+    if req.path == "usage" or req.path.startswith("usage."):
+        # §7.8: the lifetime total is derived from the usage ledger; nobody
+        # ever claims it. (Observe refuses via OBSERVABLE_PATHS; this is the
+        # assert-door half of the same rule.)
+        raise HTTPException(
+            status_code=400,
+            detail="usage is derived from the usage ledger; no door writes "
+                   "it directly")
+    if req.path == "status" and req.value is not None \
+            and req.value not in STATUS_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail="status must be one of %s (or null to clear it) — the "
+                   "vocabulary is ratified, not accreted"
+                   % sorted(STATUS_VALUES))
     field = {"value": req.value, "source": Provenance.asserted(req.actor)}
     if req.unit is not None:
         field["unit"] = req.unit
@@ -251,11 +278,123 @@ def delete_instance(record_id: str, db: Session = Depends(get_db),
         create_audit_log(session=db, user_id=user.id, operation="UNBIND",
                          entity_type="tool_table_entry_record", entity_id=entry.id,
                          changes={"reason": "bound instance deleted"})
+    # Labels on the deleted record are BURNED, not freed (founder decision
+    # 2026-08-04): delete is for records that should never have existed, and
+    # a resurrected code on a different tool would make the old sticker lie.
+    # The codes resolve to the landing page forever. Deliberate reuse exists
+    # and is `unlabel` (peel the sticker off first); "retiring" a worn-out
+    # tool is a future status concept, not deletion.
+    from loobric_server.database.schema import Label
+    for lbl in db.query(Label).filter(
+            Label.user_id == user.id, Label.entity_id == record_id).all():
+        db.delete(lbl)
+        create_audit_log(session=db, user_id=user.id, operation="DELETE",
+                         entity_type="label", entity_id=lbl.id,
+                         changes={"code": lbl.code,
+                                  "reason": "labeled record deleted"})
     db.delete(row)
     create_audit_log(session=db, user_id=user.id, operation="DELETE",
                      entity_type="tool_instance_record", entity_id=record_id)
     db.commit()
     return {"deleted": record_id}
+
+
+@router.get("/{record_id}/usage")
+def get_usage(record_id: str, db: Session = Depends(get_db),
+              user: User = Depends(door("read"))):
+    """The lifetime total AND its decomposition — 37.4 = 25.3 from one
+    machine + 12.1 from another. The decomposition is the provenance of the
+    derived total; owner-only, like everything on the record."""
+    from loobric_server.usage_ledger import contributions, instance_total
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    rows = contributions(db, user, record_id)
+    by_machine: dict = {}
+    for c in rows:
+        by_machine[c.machine_id] = by_machine.get(c.machine_id, 0.0) + c.amount
+    return {
+        "total": round(instance_total(db, user, record_id), 6),
+        "unit": "h",
+        "contributions": [
+            {"machine_id": c.machine_id, "entry_id": c.entry_id,
+             "amount": c.amount, "source": c.source,
+             "at": _iso(c.created_at)}
+            for c in rows],
+        "by_machine": {m: round(v, 6) for m, v in by_machine.items()},
+    }
+
+
+@router.post("/{record_id}/label")
+def label_instance(record_id: str, req: LabelRequest,
+                   db: Session = Depends(get_db),
+                   user: User = Depends(door("bind"))):
+    """Put one of the caller's blank labels on this record — the deliberate
+    physical↔digital act that makes the record's public spec page exist
+    (docs/LABELS.md). Rides the bind door for the same reason entry↔instance
+    binding does: it adjudicates what a physical artifact IS."""
+    from loobric_server.database.schema import Label
+    from loobric_server.label_codes import normalize_code
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        code = normalize_code(req.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    # Only the generating account may use a label: someone else's code — or a
+    # nonexistent one — is the same 404.
+    lbl = db.query(Label).filter(
+        Label.code == code, Label.user_id == user.id).first()
+    if lbl is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if lbl.entity_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="label %s is already on a record — unlabel it first" % code)
+    lbl.entity_type = "tool_instance"
+    lbl.entity_id = row.id
+    lbl.labeled_at = datetime.now(UTC)
+    lbl.version += 1
+    lbl.updated_by = user.id
+    create_audit_log(session=db, user_id=user.id, operation="LABEL",
+                     entity_type="label", entity_id=lbl.id,
+                     changes={"code": code, "record_id": row.id})
+    db.commit()
+    return {"labeled": {"code": code, "record_id": row.id}}
+
+
+@router.post("/{record_id}/unlabel")
+def unlabel_instance(record_id: str, req: LabelRequest,
+                     db: Session = Depends(get_db),
+                     user: User = Depends(door("bind"))):
+    """Take a label off this record. The label reverts to blank (reusable);
+    the record keeps all its data but loses that public route to it."""
+    from loobric_server.database.schema import Label
+    from loobric_server.label_codes import normalize_code
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        code = normalize_code(req.code)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    lbl = db.query(Label).filter(
+        Label.code == code, Label.user_id == user.id).first()
+    if lbl is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if lbl.entity_id != row.id:
+        raise HTTPException(
+            status_code=409, detail="label %s is not on this record" % code)
+    lbl.entity_id = None
+    lbl.labeled_at = None
+    lbl.version += 1
+    lbl.updated_by = user.id
+    create_audit_log(session=db, user_id=user.id, operation="UNLABEL",
+                     entity_type="label", entity_id=lbl.id,
+                     changes={"code": code, "record_id": row.id})
+    db.commit()
+    return {"unlabeled": {"code": code, "record_id": row.id}}
 
 
 @router.post("/{record_id}/media")
@@ -330,6 +469,12 @@ def observe_canonical(record_id: str, req: ObserveRequest,
             status_code=400,
             detail="%r is not observable; it must be asserted (a machine cannot "
                    "measure it)" % req.path)
+    if req.path == "status":
+        # No observable status values are ratified: `retired` is an
+        # administrative judgment, not a measurement — assert it.
+        raise HTTPException(
+            status_code=400,
+            detail="no observable status values exist; status is asserted")
     field = {"value": req.value, "source": Provenance.observed(req.client, req.machine)}
     if req.unit is not None:
         field["unit"] = req.unit

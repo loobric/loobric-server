@@ -14,6 +14,7 @@ Run the whole security surface:
 pytest tests/contract/test_key_scopes.py \
        tests/contract/test_cross_account_isolation.py \
        tests/contract/test_backup_authz.py \
+       tests/contract/test_resolver_page.py \
        tests/integration/test_registration_security.py \
        tests/integration/test_session_cookie.py
 ```
@@ -37,6 +38,10 @@ pytest tests/contract/test_key_scopes.py \
 | 13 | Sessions and **solo mode** are unscoped — a signed-in human may use every door; solo bypasses auth entirely and only ever reaches the solo user's data | `doors.check_doors` channel check | `test_key_scopes.py` (session/solo tests) |
 | 14 | Agents **assert, never observe**, and no delete/bind/credential tool exists on the MCP channel; asserts over `observed` values are refused client-side | loobric-cli `loobric/mcp/tools.py` | loobric-cli `tests/test_mcp_tools.py` |
 | 15 | Passwords and API keys are stored only as bcrypt hashes; the plain key is shown once | `auth/password.py`, `auth/apikey.py` | `tests/unit/test_auth_apikey.py` |
+| 16 | **Labels are owner-private**: only the generating account can see a label or put it on a record; cross-account (and someone else's blank code) is 404, never 403 | `api/labels.py` `_owned()`, `tool_instance_records.py` label/unlabel code lookup filtered by `user_id` | `test_cross_account_isolation.py` (label tests) |
+| 17 | **Label codes are enumerable-but-safe**: `secrets`-random over 32^8 (sparse keyspace, no rate limiting — see Known NOT covered #1), and the resolver's response for an unknown code vs someone else's blank code is indistinguishable, so probing reveals nothing | `label_codes.py` generation; `api/resolver.py` identical landing responses | `test_resolver_page.py` (indistinguishability test) |
+| 18 | **The anonymous public page never identifies the owner** — no email, user/record UUIDs, machine names, client names, or client sections; provenance sources reduced to their kind (the one full source shown is `derived:usage-ledger`, non-identifying by construction). Usage: the derived total is public, its per-machine decomposition is not — publish the sum, never the ledger. Built by allowlist construction, so new private fields can't leak by default | `public_view.py` (construction, never filtering) | `test_public_page.py` (leak canary + usage tests), `tests/unit/test_public_view.py` |
+| 19 | The resolver's server-rendered HTML **autoescapes record-supplied strings** — a hostile tool name cannot inject markup into the public page | `web/templating.py` (Jinja2 autoescape, on for everything) | `test_public_page.py` (XSS test) |
 
 ## Known NOT covered (ranked; each needs a decision or a test, not silence)
 
@@ -47,6 +52,8 @@ pytest tests/contract/test_key_scopes.py \
    no test. State-changing endpoints accept the session cookie.
 3. **Web UI output escaping** — `esc()` is used throughout the static page,
    but nothing tests that record-supplied strings can't inject markup.
+   (The server-rendered resolver pages ARE tested — row 19; this item now
+   covers only the static `/ui` page.)
 4. **Session-store properties** — in-memory, no rotation-on-login test, no
    fixation test; sessions vanish on restart (documented, untested).
 5. **Actor↔key binding** — deliberately deferred (SCOPES_PLAN Q8): spoofed

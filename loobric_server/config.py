@@ -35,6 +35,14 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     api_version: str = "v1"
+
+    # Public base URL for label short-links (docs/LABELS.md). Printed on
+    # physical labels as `<base>/t/<code>`, so it must be the address the
+    # server is REACHED at, not the address it listens on. Unset (the
+    # default) derives it per-request from the request URL — correct for a
+    # LAN/solo box; a deployment behind a proxy or TLS terminator should set
+    # it explicitly (PUBLIC_BASE_URL env var).
+    public_base_url: str | None = None
     
     # MQTT
     mqtt_enabled: bool = False

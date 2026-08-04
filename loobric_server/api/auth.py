@@ -110,6 +110,24 @@ class UserResponse(BaseModel):
     scopes: Optional[list[str]] = None
 
 
+class KeyIntrospectionResponse(BaseModel):
+    """Response model for credential introspection (`GET /auth/key`).
+
+    Everything a client needs to know about the credential it just presented
+    — and nothing secret. `scopes` are the EFFECTIVE door scopes (what
+    enforcement will actually honor), not the stored list: a legacy key
+    reports `["read"]` with `legacy: true`.
+    """
+    channel: Optional[str]           # "api-key" | "session" | "solo" (as audit rows record it)
+    api_key_id: Optional[str] = None  # audit identity; None off the api-key channel
+    name: Optional[str] = None        # the key's descriptive name
+    scopes: Optional[list[str]] = None  # effective doors, sorted; None = unscoped (session/solo)
+    read_only: bool = False           # True iff the credential cannot use any write door
+    legacy: bool = False              # pre-0.6.0 key, degraded to read-only
+    user_id: str
+    email: str
+
+
 class ApiKeyCreate(BaseModel):
     """Request model for creating API key."""
     name: str
@@ -314,6 +332,72 @@ def get_authenticated_user(
     if user is None:
         user = create_user(db, "test@example.com", "test-password-123")
     return user
+
+
+def get_optional_user(
+    request: Request,
+    session: Annotated[str | None, Cookie()] = None,
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db)
+) -> Optional[User]:
+    """Return the authenticated user, or None for an anonymous caller.
+
+    The resolver page (`GET /t/{code}`) must BRANCH on identity — owner view
+    vs public view — instead of refusing anonymous callers, which
+    get_authenticated_user (401) cannot express. Same channel order as the
+    strict dependency: solo → session → API key.
+
+    Assumptions:
+    - Solo mode returns the solo user: on a solo box every scan IS the owner
+      (deliberate; a solo box exposed to the internet is already documented
+      as unsupported — see docs/SECURITY_ASSUMPTIONS.md).
+    - auth_enabled=False (test convenience) mirrors get_authenticated_user
+      and returns the test user.
+    - An INVALID credential (expired key, dead session) is treated as
+      anonymous, not as an error: a stale cookie on a scanned phone should
+      show the public page, not a 401.
+    """
+    from loobric_server.auth.apikey import validate_api_key
+    from loobric_server.audit import set_audit_credential
+
+    if solo_mode_enabled():
+        if request:
+            request.state.auth_channel = "solo"
+            request.state.api_key_id = None
+        set_audit_credential(db, channel="solo", api_key_id=None)
+        return get_solo_user(db)
+
+    if not settings.auth_enabled:
+        set_audit_credential(db, channel=None, api_key_id=None)
+        user = get_user_by_email(db, "test@example.com")
+        if user is None:
+            user = create_user(db, "test@example.com", "test-password-123")
+        return user
+
+    user = get_session_user(session, db)
+    if user:
+        if request:
+            request.state.scopes = []
+            request.state.is_api_key_auth = False
+            request.state.auth_channel = "session"
+            request.state.api_key_id = None
+        set_audit_credential(db, channel="session", api_key_id=None)
+        return user
+
+    if authorization and authorization.startswith("Bearer "):
+        result = validate_api_key(db, authorization.replace("Bearer ", ""))
+        if result:
+            user, scopes, tags, key_id = result
+            if request:
+                request.state.scopes = scopes or []
+                request.state.api_key_tags = tags or []
+                request.state.is_api_key_auth = True
+                request.state.auth_channel = "api-key"
+                request.state.api_key_id = key_id
+            set_audit_credential(db, channel="api-key", api_key_id=key_id)
+            return user
+
+    return None
 
 
 # Router
@@ -540,6 +624,61 @@ def get_current_user(
         role=user.role,
         created_at=user.created_at,
         scopes=scopes
+    )
+
+
+@router.get("/key", response_model=KeyIntrospectionResponse,
+            response_model_exclude_none=True)
+def introspect_key(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_authenticated_user)
+):
+    """Introspect the presented credential (issue #44).
+
+    Lets a client discover AT ACTIVATION TIME what its API key may do,
+    instead of learning from a 403 after a write already diverged — the
+    loobric-freecad asset store's read-only-key policy depends on this.
+
+    Deliberately requires NO scope beyond "the credential is valid": a
+    read-only key must be able to learn it is read-only. A revoked or
+    expired key never reaches here (401 from authentication).
+
+    Returns, for API-key auth: the key's audit identity (`api_key_id` +
+    `channel`, exactly as audit rows record it), its name, its EFFECTIVE
+    door scopes (a legacy key reports `["read"]` and `legacy: true` — the
+    founder-chosen 0.6.0 degradation made explicit), and `read_only`.
+    Sessions and solo mode are unscoped by doctrine: `scopes` is absent and
+    `read_only` is false.
+    """
+    channel = getattr(request.state, "auth_channel", None)
+    api_key_id = None
+    key_name = None
+    scopes = None
+    read_only = False
+    legacy = False
+    if channel == "api-key":
+        from loobric_server.auth.doors import effective_doors, is_legacy
+        from loobric_server.database.schema import ApiKey
+        stored = getattr(request.state, "scopes", [])
+        held = effective_doors(stored)
+        scopes = sorted(held)
+        legacy = is_legacy(stored)
+        # Read-only means "no door beyond read" — true for legacy keys and
+        # equally for a deliberate ["read"] key.
+        read_only = held <= {"read"}
+        api_key_id = getattr(request.state, "api_key_id", None)
+        key_row = db.get(ApiKey, api_key_id) if api_key_id else None
+        key_name = key_row.name if key_row else None
+    return KeyIntrospectionResponse(
+        channel=channel,
+        api_key_id=api_key_id,
+        name=key_name,
+        scopes=scopes,
+        read_only=read_only,
+        legacy=legacy,
+        user_id=user.id,
+        email=user.email,
     )
 
 

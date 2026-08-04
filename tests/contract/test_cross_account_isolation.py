@@ -87,7 +87,53 @@ def test_isolation_holds_across_every_entity_listing(two_accounts):
     client, _, _ = two_accounts
     for resource in ("tool-instance-records", "tool-catalog-records",
                      "tool-set-records", "machine-records",
-                     "tool-table-entry-records"):
+                     "tool-table-entry-records", "labels"):
         r = client.get(f"{BASE}/{resource}")
         assert r.status_code == 200, (resource, r.text)
         assert r.json()["items"] == [], resource
+
+
+@pytest.fixture
+def two_accounts_with_label(client):
+    """Alice with an instance and a label ON it, plus a blank label; the
+    client is left logged in as bob. Returns (client, a_instance_id,
+    a_label_id, a_code, a_blank_code)."""
+    _register(client, "alice@test.io")
+    _login(client, "alice@test.io")
+    rid = client.post(f"{BASE}/tool-instance-records",
+                      json={}).json()["internal"]["id"]
+    lbl = client.post(f"{BASE}/labels",
+                      json={"entity_id": rid}).json()["items"][0]
+    blank = client.post(f"{BASE}/labels", json={}).json()["items"][0]
+    _register(client, "bob@test.io")     # alice is admin; creates bob
+    _login(client, "bob@test.io")
+    return client, rid, lbl["id"], lbl["code"], blank["code"]
+
+
+def test_b_cannot_see_or_touch_a_labels(two_accounts_with_label):
+    """Only the generating account can see a label or put it on a record —
+    cross-account is 404, never 403 (docs/SECURITY_ASSUMPTIONS.md #16)."""
+    client, a_rid, a_lid, a_code, a_blank = two_accounts_with_label
+    assert client.get(f"{BASE}/labels").json()["items"] == []
+    assert client.get(f"{BASE}/labels/{a_lid}").status_code == 404
+    assert client.delete(f"{BASE}/labels/{a_lid}").status_code == 404
+    # Bob cannot use alice's BLANK code on his own record …
+    b_rid = client.post(f"{BASE}/tool-instance-records",
+                        json={}).json()["internal"]["id"]
+    assert client.post(f"{BASE}/tool-instance-records/{b_rid}/label",
+                       json={"code": a_blank}).status_code == 404
+    # … nor unlabel alice's record, nor label alice's record with anything.
+    assert client.post(f"{BASE}/tool-instance-records/{a_rid}/unlabel",
+                       json={"code": a_code}).status_code == 404
+    # Usage decomposition is owner-only like the rest of the record.
+    assert client.get(
+        f"{BASE}/tool-instance-records/{a_rid}/usage").status_code == 404
+
+
+def test_b_session_gets_public_page_not_owner_view(two_accounts_with_label):
+    """Being logged in is not being the owner: bob's scan of alice's labeled
+    code renders the PUBLIC page."""
+    client, _, _, a_code, _ = two_accounts_with_label
+    r = client.get(f"/t/{a_code}")
+    assert r.status_code == 200
+    assert "your record" not in r.text.lower()

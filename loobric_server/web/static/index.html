@@ -287,7 +287,8 @@
 const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["audit","Audit"],["account","Account"]];
 let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
               machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{},
-              activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[] };
+              activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[],
+              labels:[], focusTool:null, _focusScrolled:false };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -372,12 +373,14 @@ function entryName(s){
 
 async function refresh(){
   try {
-    const [inbox, tools, sets, machines, audit, catalog, keys, me] = await Promise.all([
+    const [inbox, tools, sets, machines, audit, catalog, keys, me, labels] = await Promise.all([
       api("GET","/instance-inbox"), api("GET","/tool-instance-records"),
       api("GET","/tool-set-records"), api("GET","/machine-records"),
       api("GET","/audit-logs?limit=50"), api("GET","/tool-catalog-records"),
-      api("GET","/auth/keys"), api("GET","/auth/me")]);
+      api("GET","/auth/keys"), api("GET","/auth/me"),
+      api("GET","/labels").catch(()=>({items:[]}))]);
     state.inbox=inbox.items; state.tools=tools.items; state.toolsets=sets.items;
+    state.labels=labels.items||[];
     state.machines=machines.items; state.audit=audit.logs||[]; state.catalogs=catalog.items;
     state.keys = Array.isArray(keys) ? keys : (keys.items||[]); state.me = me||null;
     $("#whoami").textContent = (me && me.email) ? me.email : "";
@@ -445,8 +448,27 @@ function render(){
       <div class="arow" style="margin-top:.6rem"><button class="mini create" onclick="addDemoData()">Add demo data</button></div>
     </div>` : "";
   $("#view").innerHTML = banner + body;
+  // Deep-link focus (#tool/<id>): scroll the focused card into view once its
+  // data has rendered; the outline stays until the user changes tabs.
+  if(state.tab==="tools" && state.focusTool && !state._focusScrolled){
+    const el = document.getElementById("tool-card-"+state.focusTool);
+    if(el){ el.scrollIntoView({block:"center"}); state._focusScrolled=true; }
+  }
 }
-function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; state.machineSel=null; render(); refresh(); }
+function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; state.machineSel=null;
+  state.focusTool=null; state._focusScrolled=false;
+  if(location.hash) history.replaceState(null,"",location.pathname);
+  render(); refresh(); }
+
+// ---- hash routing (the ONE deep link: #tool/<id>, the resolver's owner view
+// lands here from a scanned label) ------------------------------------------
+function applyHash(){
+  const m = location.hash.match(/^#tool\/([0-9a-fA-F-]{36})$/);
+  if(!m) return;
+  state.tab="tools"; state.focusTool=m[1]; state._focusScrolled=false;
+  render();
+}
+window.addEventListener("hashchange", applyHash);
 
 // ---- account data: demo seed + reset (the caller's own data only) -----------
 function accountIsEmpty(){
@@ -502,7 +524,9 @@ async function unbindEntry(entryId){ if(!(await confirmDialog("Unbind this entry
 
 // ---- delete (human admin actions; provenance human@web) --------------------
 async function deleteRecord(id){ const t=state.tools.find(x=>rid(x)===id);
-  if(!(await confirmDialog(`Delete tool "${cf(t,"name")||id.slice(0,8)}"? Any entry holding it is unbound (its data stays).`))) return;
+  const nlbl=labelsFor(id).length;
+  const burn=nlbl?` Its ${nlbl===1?"label is":nlbl+" labels are"} burned — the printed code${nlbl===1?"":"s"} will stop resolving (unlabel first to keep a sticker reusable).`:"";
+  if(!(await confirmDialog(`Delete tool "${cf(t,"name")||id.slice(0,8)}"? Any entry holding it is unbound (its data stays).${burn}`))) return;
   try{ await api("DELETE","/tool-instance-records/"+id); toast("Deleted tool."); refresh(); }catch(e){ toast(e.message); } }
 async function deleteMachine(id){
   if(!(await confirmDialog(`Delete machine "${state.machineNames[id]}" and its tool table? Tool instances stay.`))) return;
@@ -570,23 +594,110 @@ async function setName(id){
   if(name===null) return; if(!name.trim()){ toast("Name can't be empty."); return; }
   try{ await api("POST","/tool-instance-records/"+id+"/assert",{path:"name",value:name.trim(),actor:"human@web"}); toast("Named."); refresh(); }catch(e){ toast(e.message); } }
 
+// ---- Labels (physical stickers; docs/LABELS.md) -----------------------------
+// A label is blank until it's on a record; only this account's codes work.
+function labelsFor(id){ return state.labels.filter(l=>l.entity_id===id); }
+function blankLabels(){ return state.labels.filter(l=>!l.entity_id); }
+
+// PDF endpoints return bytes, not JSON — fetch a blob and open it.
+async function apiPdf(path, body){
+  const r = await fetch("/api/v1"+path, {method:"POST", credentials:"same-origin",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if(!r.ok){ const d=await r.json().catch(()=>({})); throw new Error(d.detail||("HTTP "+r.status)); }
+  const url = URL.createObjectURL(await r.blob());
+  window.open(url, "_blank");
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+}
+
+// Mint-and-print a batch of blanks: the drawer workflow (stick one on whatever
+// you're holding, then scan it to attach a record).
+async function printBlankSheet(){
+  const raw = await promptDialog("How many blank labels? (30 fills an Avery 5160 sheet)", "30");
+  if(raw===null) return;
+  const n = parseInt(raw, 10);
+  if(!(n>=1 && n<=100)){ toast("Count must be 1-100."); return; }
+  try{ await apiPdf("/labels/sheet", {count:n, stock:"avery-5160"});
+       toast(n+" blank label(s) minted — print at 100% scale."); refresh(); }
+  catch(e){ toast(e.message); }
+}
+async function reprintLabel(labelId){
+  try{ await apiPdf("/labels/sheet", {label_ids:[labelId], stock:"avery-5160"}); }
+  catch(e){ toast(e.message); }
+}
+// Put a label on a tool: a blank code from the sheet on the bench, or mint one.
+async function labelTool(toolId){
+  const blanks = blankLabels();
+  if(!blanks.length){
+    if(!(await confirmDialog("No blank labels on hand — mint a new label for this tool?"))) return;
+    try{ await api("POST","/labels",{entity_id:toolId}); toast("Labeled — print it from the tool card."); refresh(); }
+    catch(e){ toast(e.message); }
+    return;
+  }
+  const code = await promptDialog("Which label code? Blank: "+
+    blanks.slice(0,8).map(l=>l.code).join(", ")+(blanks.length>8?", …":""), blanks[0].code);
+  if(code===null || !code.trim()) return;
+  try{ await api("POST","/tool-instance-records/"+toolId+"/label",{code:code.trim()});
+       toast("Labeled."); refresh(); }catch(e){ toast(e.message); }
+}
+async function unlabelTool(toolId, code){
+  if(!(await confirmDialog("Take label "+code+" off this tool? The sticker's page goes back to the landing page and the label is reusable."))) return;
+  try{ await api("POST","/tool-instance-records/"+toolId+"/unlabel",{code});
+       toast("Unlabeled."); refresh(); }catch(e){ toast(e.message); }
+}
+function labelChips(t){
+  const lbls = labelsFor(rid(t));
+  const chips = lbls.map(l=>
+    `<span class="pill info"><a href="/t/${esc(l.code)}" target="_blank" rel="noopener"
+       style="color:inherit" title="open the label's page">${esc(l.code)}</a></span>
+     <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button>
+     <button class="mini link" onclick="unlabelTool('${rid(t)}','${esc(l.code)}')">Unlabel</button>`).join(" ");
+  return `<div class="row" style="margin-top:.4rem"><span>${chips||'<span class="muted">no labels</span>'}</span>
+    <button class="mini link" onclick="labelTool('${rid(t)}')">Add label</button></div>`;
+}
+
+// ---- Retire (ratified status value; assert-only, judgment not measurement) --
+function isRetired(id){ const t=state.tools.find(x=>rid(x)===id); return !!t && cf(t,"status")==="retired"; }
+async function retireTool(id){ const t=state.tools.find(x=>rid(x)===id);
+  if(!(await confirmDialog(`Retire "${cf(t,"name")||id.slice(0,8)}"? The record, its history, and its labels all stay — it's just marked no longer in service.`))) return;
+  try{ await api("POST","/tool-instance-records/"+id+"/assert",{path:"status",value:"retired",actor:"human@web"});
+       toast("Retired."); refresh(); }catch(e){ toast(e.message); } }
+async function unretireTool(id){
+  try{ await api("POST","/tool-instance-records/"+id+"/assert",{path:"status",value:null,actor:"human@web"});
+       toast("Back in service."); refresh(); }catch(e){ toast(e.message); } }
+
 // ---- Tools (instances) -----------------------------------------------------
 function renderTools(){
+  const blanks = blankLabels().length;
+  const toolbar = `<div class="card"><div class="row">
+      <span><strong>Labels</strong> <span class="muted">${blanks} blank on hand —
+        stickers link the tool in the drawer to its record (scan or type the code at /t/&lt;code&gt;)</span></span>
+      <button class="mini create" onclick="printBlankSheet()">Print blank labels…</button>
+    </div></div>`;
+  return toolbar + renderToolCards();
+}
+function renderToolCards(){
   if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
   const boundAt={};
   for(const m of state.machines) for(const s of (state.entriesByMachine[rid(m)]||[])){
     const b=cf(s,"bound_instance_id"); if(b)(boundAt[b]=boundAt[b]||[]).push({m,n:cf(s,"tool_number")}); }
   return state.tools.map(t=>{
     const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), where=(boundAt[rid(t)]||[]);
-    return `<div class="card">
+    const hours=cf(t,"usage.hours"), retired=cf(t,"status")==="retired";
+    const styles=[state.focusTool===rid(t)?"outline:2px solid var(--ok)":"",
+                  retired?"opacity:.65":""].filter(Boolean).join(";");
+    return `<div class="card" id="tool-card-${rid(t)}"${styles?` style="${styles}"`:""}>
       <div class="row"><strong>${esc(cf(t,"name")||"(unnamed)")}</strong>
-        <span>${idLink(rid(t))}
+        <span>${retired?'<span class="pill unbound">retired</span> ':""}${idLink(rid(t))}
           <button class="mini link" onclick="setName('${rid(t)}')">${cf(t,"name")?"Rename":"Set name"}</button></span></div>
-      <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}</div>`+
+      <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h total use":""}</div>`+
       mediaSection(t,"tool-instance-records")+
+      labelChips(t)+
       where.map(w=>`<div class="row" style="margin-top:.4rem"><span><span class="pill bound">bound</span> T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span></div>`).join("")+
+      (retired&&where.length?`<div class="row" style="margin-top:.4rem"><span class="pill unbound">retired but still mounted</span></div>`:"")+
       `<div class="row" style="margin-top:.6rem"><span class="muted">${where.length} binding(s)</span>
-        <button class="unbind" onclick="deleteRecord('${rid(t)}')">Delete tool</button></div>`+
+        <span class="rowact">
+          <button class="mini link" onclick="${retired?"unretireTool":"retireTool"}('${rid(t)}')">${retired?"Return to service":"Retire"}</button>
+          <button class="unbind" onclick="deleteRecord('${rid(t)}')">Delete tool</button></span></div>`+
     `</div>`;
   }).join("");
 }
@@ -799,6 +910,7 @@ function entryRow(m,s,status){
       <span>${esc(entryName(s)||"")}</span>
       <span class="muted">${dia!=null?"&#x2300;"+dia:""}</span>
       ${bound?`<span class="pill bound">${esc(state.toolNames[bound]||bound.slice(0,8))}</span>`:`<span class="pill unbound">unbound</span>`}
+      ${bound&&isRetired(bound)?`<span class="pill unbound">retired tool mounted</span>`:""}
       ${badge}
       ${guess}
     </div>
@@ -1285,6 +1397,7 @@ function renderAudit(){
     `</table></div>`;
 }
 
+applyHash();
 refresh();
 setInterval(refresh, 15000);
 </script>

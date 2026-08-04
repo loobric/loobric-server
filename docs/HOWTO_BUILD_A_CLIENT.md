@@ -124,6 +124,14 @@ POST /api/v1/tool-table-entry-records/sync
   "offsets": { "diameter": 6.35, "diameter_unit": "mm" } } ] }
 ```
 
+If the controller tracks tool life, push its counter with the table — add
+`"usage_hours": 25.3` to an entry (or observe the `usage_hours` path). **Hours
+only, unit `"h"`** — a controller reporting minutes or cycles converts
+client-side (the server 400s other units). Send the counter **verbatim,
+resets included**: the server ingests deltas against the previous reading and
+credits them to the entry's bound instance (TOOL_SCHEMA.md §7.8); never
+pre-total or pre-correct it.
+
 The server may then **propose** binding an entry to an existing tool instance.
 Proposals land in the **inbox**; a human confirms or rejects them:
 

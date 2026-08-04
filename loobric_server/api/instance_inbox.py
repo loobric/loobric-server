@@ -58,7 +58,12 @@ def inbox(db: Session = Depends(get_db),
                                   "name": _value(inst.canonical, "name"),
                                   "diameter": _value(inst.canonical, "geometry", "diameter")},
         })
-    return {"items": items}
+
+    # Orphaned usage (§7.8): hours observed on an unbound entry or across a
+    # binding change — recorded, surfaced here, never guessed onto an
+    # instance. Read-only for now; human attribution verbs are deferred.
+    from loobric_server.usage_ledger import orphans_by_entry
+    return {"items": items, "usage_orphans": orphans_by_entry(db, user)}
 
 
 def _resolve(db: Session, user: User, proposal_id: str) -> EntryProposal:

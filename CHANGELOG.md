@@ -3,6 +3,55 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.9.0] — 2026-08-04
+
+### Added
+- **Labels: physical QR/short-code stickers → digital records**
+  (docs/LABELS.md). New `labels` entity (migration 0004): 8-char Crockford
+  base32 codes, entity-generic and many-per-record, blank until a record is
+  **labeled** (new verb; rides the bind door — only the generating account
+  can use a code). `POST /api/v1/labels` mints them; `POST
+  /tool-instance-records/{id}/label` / `/unlabel` attach and detach.
+- **The resolver: `GET /t/{code}`** — the permanent printed-URL surface,
+  outside `/api` and the OpenAPI contract. Anonymous scan of a labeled tool
+  gets the **public spec page** (catalog identity, geometry, derived usage
+  total — the "physical inspection" rule: never the owner, machines, or
+  history; security assumptions #16–19). The owner gets an actionable view;
+  a blank label scanned by its owner offers pick-or-create **scan-and-label**
+  (`POST /t/{code}/label`). Base URL is per-instance (`PUBLIC_BASE_URL`,
+  else request-derived) — self-hosting first-class.
+- **PDF label sheets**: `POST /api/v1/labels/sheet` renders real sticker
+  stock (`avery-5160` 30-up, `thermal-57x32` roll) with vector QR + grouped
+  human-readable code; `{"count": N}` mints-and-prints a blank batch,
+  `start_at` resumes a partially-used sheet. New deps: segno, reportlab.
+- **Usage ledger (TOOL_SCHEMA.md §7.8, now implemented; migration 0005).**
+  `usage_hours` is observable on entries (observe door and `/sync`);
+  positive deltas against the previous reading are credited to the entry's
+  confirmed, interval-stable bound instance; resets re-baseline; ambiguous
+  hours are **orphaned** and surfaced read-only in the instance inbox
+  (`usage_orphans`), never guessed. The instance's lifetime total
+  `usage.hours` is **`derived:usage-ledger`** — asserting or observing it
+  is a 400 — and decomposes at `GET /tool-instance-records/{id}/usage`
+  (per-machine contributions; `GET /tool-table-entry-records/{id}/usage`
+  for an entry's rows). The public spec page shows the derived total —
+  publish the sum, never the ledger.
+
+## [0.8.0] — 2026-08-01
+
+### Added
+- **Key scope introspection: `GET /api/v1/auth/key`**
+  ([#44](https://github.com/loobric/loobric-server/issues/44)). A client can
+  now learn AT ACTIVATION TIME what its credential may do, instead of
+  learning from a 403 after a write already diverged. Returns the key's
+  audit identity (`channel` + `api_key_id`, exactly as audit rows record
+  it), its name, its **effective** door scopes (a legacy key reports
+  `["read"]` with `legacy: true` — the 0.6.0 degradation made explicit), and
+  an explicit `read_only` flag. Requires no scope beyond "the credential is
+  valid"; a session or solo caller gets its channel and **no scopes field**
+  (unscoped ≠ empty). Unblocks loobric-freecad's asset-store read-only-key
+  policy (writes fail fast at the edit + RO badge) and gives `loobric
+  status` and the MCP server a real answer instead of 403 archaeology.
+
 ## [0.7.1] — 2026-07-30
 
 ### Added

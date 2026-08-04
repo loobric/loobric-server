@@ -83,6 +83,41 @@ Rules:
   client-supplied; these columns are server truth, so a spoofed actor string
   is detectable.
 
+### Introspecting a key (`GET /api/v1/auth/key`)
+
+A client can ask the server what the credential it just presented may do —
+**before** attempting a write — with `GET /api/v1/auth/key`. The endpoint
+requires nothing beyond a valid credential (a read-only key must be able to
+learn it is read-only; a revoked or expired key gets the normal 401), and the
+response contains no secrets:
+
+```json
+{
+  "channel": "api-key",
+  "api_key_id": "b4f2…",
+  "name": "shop-freecad",
+  "scopes": ["read", "sync", "assert"],
+  "read_only": false,
+  "legacy": false,
+  "user_id": "…",
+  "email": "owner@shop.example"
+}
+```
+
+- `channel` + `api_key_id` are the key's audit identity — exactly what audit
+  rows record for its writes.
+- `scopes` are the **effective** door scopes (what enforcement honors), not
+  the stored list: a legacy key reports `["read"]` with `legacy: true`.
+- `read_only` is true iff the key holds no door beyond `read` — true for
+  legacy keys and equally for a deliberately created `["read"]` key.
+- On a session (or solo mode) the same endpoint answers with
+  `channel: "session"` / `"solo"` and **no `scopes` field at all** — sessions
+  are unscoped by doctrine, which is different from holding an empty list.
+
+This is what lets loobric-freecad's asset-store mode activate read-only UI
+for a read-only key instead of discovering a 403 after an edit already
+happened, and what `loobric status` uses to describe the configured key.
+
 ### Tags
 
 Tags provide coarse, resource-level access control on top of scopes:

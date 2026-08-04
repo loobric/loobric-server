@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block title %}Loobric{% endblock %}</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c1e21; --muted: #6a7076;
+    --card: #f5f6f7; --line: #d9dde1; --accent: #2f6f4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181a; --fg: #e8eaed; --muted: #9aa0a6;
+      --card: #202327; --line: #3a3f45; --accent: #6fbf95;
+    }
+  }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, sans-serif;
+    display: flex; justify-content: center; min-height: 100vh;
+  }
+  main { width: 100%; max-width: 560px; padding: 2rem 1.25rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 1.25rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 1rem 1.25rem; margin: 0 0 1rem;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: .3rem 0; vertical-align: baseline; }
+  td.k { color: var(--muted); width: 45%; }
+  .prov {
+    font-size: .72rem; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 0 .5rem; margin-left: .4rem;
+    white-space: nowrap;
+  }
+  .code { font-family: ui-monospace, monospace; letter-spacing: .06em; }
+  .banner {
+    border-left: 3px solid var(--accent); padding: .5rem .75rem;
+    background: var(--card); border-radius: 0 8px 8px 0; margin: 0 0 1rem;
+  }
+  a { color: var(--accent); }
+  footer {
+    margin-top: 2rem; color: var(--muted); font-size: .85rem;
+    border-top: 1px solid var(--line); padding-top: .75rem;
+  }
+</style>
+</head>
+<body>
+<main>
+{% block content %}{% endblock %}
+<footer>Loobric{% if code %} · label <span class="code">{{ code }}</span>{% endif %}</footer>
+</main>
+</body>
+</html>

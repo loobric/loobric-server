@@ -38,7 +38,9 @@ router = APIRouter(prefix="/api/v1/tool-table-entry-records", tags=["tool-table-
 
 # A machine may only OBSERVE these entry facts; the binding is set via /bind.
 # `description` is the table comment the machine reports (observed table state).
-OBSERVABLE_PATHS = {"tool_number", "description",
+# `usage_hours` is the controller's own tool-life counter, verbatim (§7.8) —
+# its deltas feed the usage ledger on the way in.
+OBSERVABLE_PATHS = {"tool_number", "description", "usage_hours",
                     "offsets.diameter", "offsets.z", "offsets.x", "offsets.y"}
 
 
@@ -151,6 +153,9 @@ class EntryIn(BaseModel):
     offsets: dict = {}          # plain values + optional <key>_unit, e.g. {"diameter": 6.35, "diameter_unit": "mm"}
     data: dict = {}             # the client section's opaque payload
     client_item_id: Optional[str] = None
+    # The controller's tool-life counter for this row (§7.8), in hours —
+    # convert client-side. Deltas feed the usage ledger.
+    usage_hours: Optional[float] = None
 
 
 class EntrySyncRequest(BaseModel):
@@ -202,10 +207,23 @@ def sync_entries(req: EntrySyncRequest, db: Session = Depends(get_db),
             db.add(row)
             db.flush()
             created.append(row)
+        if s.usage_hours is not None:
+            # Before the new reading lands in canonical (the ledger reads the
+            # previous one off the row). Sync IS the observe door here.
+            from loobric_server.usage_ledger import (
+                UsageError, ingest_usage_observation)
+            try:
+                ingest_usage_observation(db, user, row, s.usage_hours, "h",
+                                         src, req.machine_id)
+            except UsageError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
         canonical = copy.deepcopy(row.canonical)
         canonical["tool_number"] = {"value": s.tool_number, "source": src}
         if s.description is not None:
             canonical["description"] = {"value": s.description, "source": src}
+        if s.usage_hours is not None:
+            canonical["usage_hours"] = {"value": s.usage_hours, "unit": "h",
+                                        "source": src}
         offsets = canonical.setdefault("offsets", {})
         for key, value in s.offsets.items():
             if key.endswith("_unit"):
@@ -279,6 +297,24 @@ def get_entry(record_id: str, db: Session = Depends(get_db),
     return _response(row)
 
 
+@router.get("/{record_id}/usage")
+def get_entry_usage(record_id: str, db: Session = Depends(get_db),
+                    user: User = Depends(door("read"))):
+    """This entry's ledger rows — contributions and ORPHANS (hours observed
+    while unbound or across a binding change; recorded, surfaced, never
+    guessed onto an instance)."""
+    from loobric_server.usage_ledger import entry_rows
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return {"items": [
+        {"instance_id": r.instance_id, "machine_id": r.machine_id,
+         "amount": r.amount, "counter_value": r.counter_value,
+         "source": r.source, "orphaned": r.instance_id is None,
+         "at": _iso(r.created_at)}
+        for r in entry_rows(db, user, record_id)]}
+
+
 @router.put("/{record_id}/clients/{client}")
 def write_client_section(record_id: str, client: str, payload: dict,
                          db: Session = Depends(get_db),
@@ -321,6 +357,19 @@ def observe_canonical(record_id: str, req: ObserveRequest,
     field = {"value": req.value, "source": Provenance.observed(req.client, req.machine)}
     if req.unit is not None:
         field["unit"] = req.unit
+    audit_changes = {"path": req.path, "source": field["source"]}
+    if req.path == "usage_hours":
+        # Ledger ingest reads the PREVIOUS reading off row.canonical, so it
+        # runs before the observation is written (§7.8 delta rules).
+        from loobric_server.usage_ledger import UsageError, ingest_usage_observation
+        try:
+            result = ingest_usage_observation(
+                db, user, row, req.value, req.unit or "h",
+                field["source"], row.machine_id)
+        except UsageError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        audit_changes["usage"] = result
+        field.setdefault("unit", "h")
     canonical = _set_path(row.canonical, req.path, field)
     _validate_canonical(canonical)
     row.canonical = canonical
@@ -328,7 +377,7 @@ def observe_canonical(record_id: str, req: ObserveRequest,
     row.updated_by = user.id
     create_audit_log(session=db, user_id=user.id, operation="OBSERVE",
                      entity_type="tool_table_entry_record", entity_id=row.id,
-                     changes={"path": req.path, "source": field["source"]})
+                     changes=audit_changes)
     db.commit()
     return _response(row)
 

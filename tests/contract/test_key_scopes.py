@@ -169,6 +169,30 @@ def test_full_preset_key_cannot_reach_admin_surface(session_client):
         assert "admin" in r.json()["detail"]
 
 
+def test_label_verbs_ride_the_bind_door(session_client):
+    """Creating labels is assert territory (the agent preset can pre-print a
+    sheet), but PUTTING one on a record adjudicates a physical↔digital
+    identity — bind door, like entry↔instance binding."""
+    h = _key(session_client, ["read", "sync", "assert"], "labeler")
+    ro = _key(session_client, ["read"], "ro-label")
+    session_client.cookies.clear()
+
+    r = session_client.post(f"{BASE}/labels", json={}, headers=ro)
+    assert r.status_code == 403 and "assert" in r.json()["detail"]
+
+    made = session_client.post(f"{BASE}/labels", json={}, headers=h)
+    assert made.status_code == 200, made.text
+    code = made.json()["items"][0]["code"]
+
+    r = session_client.post(f"{BASE}/tool-instance-records/x/label",
+                            headers=h, json={"code": code})
+    # 403 (scope) must win before 404 (no such record).
+    assert r.status_code == 403 and "bind" in r.json()["detail"]
+    r = session_client.post(f"{BASE}/tool-instance-records/x/unlabel",
+                            headers=h, json={"code": code})
+    assert r.status_code == 403 and "bind" in r.json()["detail"]
+
+
 # -- legacy keys break to read-only (founder decision, SCOPES_PLAN §5) --------
 
 def test_legacy_scoped_key_degrades_to_read_only(session_client, db_session):
@@ -256,6 +280,87 @@ def test_solo_mode_passes_everything(solo_client):
     rid = r.json()["internal"]["id"]
     assert solo_client.delete(
         f"{BASE}/tool-catalog-records/{rid}").status_code == 200
+
+
+# -- key introspection: GET /auth/key (issue #44) ------------------------------
+
+def test_introspect_full_scope_key(session_client):
+    """A write-capable key learns its effective doors and audit identity."""
+    r0 = session_client.post(f"{BASE}/auth/keys", json={
+        "name": "shop-full", "scopes": ["read", "sync", "assert"]})
+    assert r0.status_code == 201, r0.text
+    key_id, plain = r0.json()["id"], r0.json()["key"]
+    session_client.cookies.clear()
+    r = session_client.get(f"{BASE}/auth/key",
+                           headers={"Authorization": "Bearer " + plain})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["channel"] == "api-key"
+    assert body["api_key_id"] == key_id          # exactly as audit rows record it
+    assert body["name"] == "shop-full"
+    assert body["scopes"] == ["assert", "read", "sync"]   # effective, sorted
+    assert body["read_only"] is False
+    assert body["legacy"] is False
+
+
+def test_introspect_deliberate_read_only_key(session_client):
+    """A chosen ["read"] key is read-only but NOT legacy — the two are
+    distinct facts and the response keeps them apart."""
+    h = _key(session_client, ["read"], "ro-probe")
+    session_client.cookies.clear()
+    body = session_client.get(f"{BASE}/auth/key", headers=h).json()
+    assert body["scopes"] == ["read"]
+    assert body["read_only"] is True
+    assert body["legacy"] is False
+
+
+def test_introspect_legacy_key_reports_degradation(session_client, db_session):
+    """A pre-0.6.0 key must be able to LEARN it is read-only without
+    provoking a 403 — the whole point of the endpoint."""
+    from loobric_server.auth.apikey import create_api_key
+    from loobric_server.database.schema import User
+    user = db_session.query(User).filter_by(email="scopes@test.io").one()
+    plain = create_api_key(session=db_session, user_id=user.id,
+                           name="old-timer", scopes=["read", "write"])
+    session_client.cookies.clear()
+    r = session_client.get(f"{BASE}/auth/key",
+                           headers={"Authorization": "Bearer " + plain})
+    assert r.status_code == 200, r.text          # no scope needed beyond validity
+    body = r.json()
+    assert body["scopes"] == ["read"]            # effective, not stored
+    assert body["read_only"] is True
+    assert body["legacy"] is True
+    assert body["name"] == "old-timer"
+
+
+def test_introspect_revoked_key_is_401(session_client):
+    r0 = session_client.post(f"{BASE}/auth/keys", json={
+        "name": "doomed", "scopes": ["read"]})
+    key_id, plain = r0.json()["id"], r0.json()["key"]
+    assert session_client.delete(
+        f"{BASE}/auth/keys/{key_id}").status_code == 204
+    session_client.cookies.clear()
+    r = session_client.get(f"{BASE}/auth/key",
+                           headers={"Authorization": "Bearer " + plain})
+    assert r.status_code == 401
+
+
+def test_introspect_session_is_unscoped(session_client):
+    """Sessions are the human: no scopes field at all (unscoped ≠ empty),
+    never read-only, no key identity."""
+    body = session_client.get(f"{BASE}/auth/key").json()
+    assert body["channel"] == "session"
+    assert "scopes" not in body
+    assert "api_key_id" not in body
+    assert body["read_only"] is False
+    assert body["legacy"] is False
+
+
+def test_introspect_solo_is_unscoped(solo_client):
+    body = solo_client.get(f"{BASE}/auth/key").json()
+    assert body["channel"] == "solo"
+    assert "scopes" not in body
+    assert body["read_only"] is False
 
 
 # -- machine self-registration: the observe-or-assert amendment (2026-07-30) --

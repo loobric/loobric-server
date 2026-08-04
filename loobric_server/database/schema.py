@@ -349,6 +349,12 @@ class ToolTableEntryRecord(Base, TimestampMixin, VersionMixin, UserAttributionMi
         String(36), nullable=True, unique=True, index=True)
     canonical: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     clients: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # The binding at the PREVIOUS usage observation (TOOL_SCHEMA.md §7.8):
+    # a positive counter delta contributes only when the binding is unchanged
+    # across the observation interval — this column is the interval's start
+    # endpoint. Server-maintained by usage_ledger.ingest_usage_observation.
+    usage_baseline_instance_id: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True)
 
 
 class ToolSetRecord(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
@@ -404,6 +410,62 @@ class MachineSetMap(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     activated_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     ended_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     ended_key: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+
+
+class UsageLedger(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
+    """A usage contribution (TOOL_SCHEMA.md §7.8): one positive counter delta,
+    attributed. Internal, append-only — like machine_set_maps, users meet the
+    noun ("usage"), never the table name.
+
+    `instance_id` NULL = ORPHANED hours: observed on an entry that was
+    unbound, or whose binding changed within the interval — recorded,
+    surfaced, never guessed onto an instance. `counter_value` is the raw
+    reading that produced the delta, kept for decomposition/debugging.
+    Counters are deltas, never gauges; `amount` is always > 0 (baselines and
+    resets append nothing).
+    """
+    __tablename__ = "usage_ledger"
+    __table_args__ = (
+        Index("ix_usage_ledger_instance_metric",
+              "user_id", "instance_id", "metric"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    entry_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    machine_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    instance_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    metric: Mapped[str] = mapped_column(String(16), nullable=False, default="hours")
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    counter_value: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class Label(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
+    """A physical label: a QR/short-code sticker pointing at one record.
+
+    Entity-generic by design — (entity_type, entity_id) with no FK, so future
+    entity kinds (boxes, storage places, machines) ride the same table; v1
+    exposes only tool_instance labels at the API. A NULL entity_id is a
+    BLANK label (pre-printed sheet, not yet on anything digital); labeling a
+    record later fills it in. Deliberately NO unique constraint on the entity
+    columns: many labels may point at one record (an external asset system's
+    tag and a Loobric label can coexist on the same tool).
+
+    `code` is the printed short code, stored normalized (label_codes.py),
+    globally unique — the resolver (`/t/{code}`) has no user context. The
+    column is an opaque unique string: a future alias feature may register
+    externally-issued codes here, so nothing assumes the Loobric alphabet.
+    """
+    __tablename__ = "labels"
+    __table_args__ = (
+        Index("ix_labels_entity", "entity_type", "entity_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    code: Mapped[str] = mapped_column(String(12), nullable=False, unique=True, index=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, default="tool_instance")
+    entity_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    labeled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
 
 class EntryProposal(Base, TimestampMixin, VersionMixin, UserAttributionMixin):

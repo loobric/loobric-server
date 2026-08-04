@@ -1,0 +1,7 @@
+{% extends "public_tool.html" %}
+{% block content %}
+<div class="banner">This is your record —
+<a href="/ui/#tool/{{ record_id }}">open it in the Web UI</a>
+to rename it, manage its labels, or see where it's bound.</div>
+{{ super() }}
+{% endblock %}

@@ -37,6 +37,8 @@ from loobric_server.api.tool_set_records import router as tool_set_records_route
 from loobric_server.api.machine_set_maps import router as machine_set_maps_router
 from loobric_server.api.machine_records import router as machine_records_router
 from loobric_server.api.instance_inbox import router as instance_inbox_router
+from loobric_server.api.labels import router as labels_router
+from loobric_server.api.resolver import router as resolver_router
 from loobric_server.api.account import router as account_router
 from loobric_server.api.admin import router as admin_router
 
@@ -118,8 +120,12 @@ def create_app() -> FastAPI:
     app.include_router(machine_set_maps_router)
     app.include_router(machine_records_router)
     app.include_router(instance_inbox_router)
+    app.include_router(labels_router)
     app.include_router(account_router)
     app.include_router(admin_router)
+    # Label resolver: the printed-URL surface (`/t/{code}`), HTML, outside
+    # /api and outside the OpenAPI contract — see api/resolver.py.
+    app.include_router(resolver_router)
     # Legacy deep-schema routers: retiring v1 substrate, kept reachable for the
     # v2 transition but unpublished (hidden from the OpenAPI contract). Slated
     # for removal — see REBOOT.md R6.

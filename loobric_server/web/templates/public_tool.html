@@ -1,0 +1,52 @@
+{% extends "_base.html" %}
+{% block title %}{{ tool.name or (tool.catalog.name if tool.catalog else None) or "Tool" }} · Loobric{% endblock %}
+
+{% macro geometry_rows(geo) %}
+  {% set names = {
+      "shape": "Shape", "diameter": "Diameter",
+      "cutting_diameter": "Cutting diameter", "shank_diameter": "Shank diameter",
+      "length": "Length", "cutting_edge_height": "Cutting edge height",
+      "gauge_length": "Gauge length", "flutes": "Flutes"} %}
+  {% for key, label in names.items() if geo.get(key) %}
+    {% set leaf = geo[key] %}
+    <tr>
+      <td class="k">{{ label }}</td>
+      <td>{{ leaf.value }}{% if leaf.unit %} {{ leaf.unit }}{% endif %}
+          <span class="prov">{{ leaf.provenance }}</span></td>
+    </tr>
+  {% endfor %}
+{% endmacro %}
+
+{% block content %}
+<h1>{{ tool.name or (tool.catalog.name if tool.catalog else None) or "Unnamed tool" }}</h1>
+<p class="sub">
+  {% if tool.catalog and tool.catalog.manufacturer %}{{ tool.catalog.manufacturer }}{% endif %}
+  {% if tool.catalog and tool.catalog.product_code %} · {{ tool.catalog.product_code }}{% endif %}
+</p>
+
+{% if tool.usage_hours %}
+<div class="card">
+  <table>
+    <tr>
+      <td class="k">Total use</td>
+      <td>{{ tool.usage_hours.value }}{% if tool.usage_hours.unit %} {{ tool.usage_hours.unit }}{% endif %}
+          <span class="prov">{{ tool.usage_hours.provenance }}</span></td>
+    </tr>
+  </table>
+</div>
+{% endif %}
+
+{% if tool.geometry %}
+<div class="card">
+  <strong>Measured</strong>
+  <table>{{ geometry_rows(tool.geometry) }}</table>
+</div>
+{% endif %}
+
+{% if tool.catalog and tool.catalog.geometry %}
+<div class="card">
+  <strong>Nominal{% if tool.catalog.name %} · {{ tool.catalog.name }}{% endif %}</strong>
+  <table>{{ geometry_rows(tool.catalog.geometry) }}</table>
+</div>
+{% endif %}
+{% endblock %}

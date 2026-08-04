@@ -240,9 +240,21 @@ The syncable, installable thing. References an optional catalog type. **Binds
 to at most one tool-table entry at a time** (the install-once invariant, §8).
 
 `canonical`: `name`, `catalog_type_id` (optional, provenance-tagged —
-`unknown` until someone asserts it), `status` (installed/in-drawer/…),
-**measured** `geometry` (`observed` per machine). The measured diameter here is
-the per-instance reality; the nominal lives on the type.
+`unknown` until someone asserts it), `status`, **measured** `geometry`
+(`observed` per machine). The measured diameter here is the per-instance
+reality; the nominal lives on the type.
+
+`status` vocabulary is **ratified, not accreted** (the machine-capability
+precedent; unknown values → 400). Ratified so far (2026-08-04): **`retired`**
+— a valid record of a tool no longer in service. Absence of status = in
+service. Retirement is an administrative judgment, so it is **assert-only**
+(no observable status values exist); a retired tool keeps its labels, its
+public spec page, and its usage history, and binding it is allowed but
+surfaced, never blocked (the server informs, it is never an interlock).
+Retiring is distinct from **deletion**, which is data management for records
+that should never have existed (and burns labels — see LABELS.md).
+Candidate future values (in-drawer, mounted, …) return here for ratification
+before any door accepts them.
 
 ### 7.3 `ToolTableEntry` — a row of a machine's tool table
 One row of a machine's tool table.
@@ -400,6 +412,116 @@ hold; carry everything else through verbatim.*
 > deferred. Per-item media provenance (each MediaRef its own `source`) is also
 > deferred — today the whole set shares one `source`, like `components`.
 
+### 7.8 Usage (tool life across machines)
+
+> Status: **implemented** (2026-08-04; drafted 2026-08-03 from a Haas user
+> conversation). The delta rules below are live: `usage_hours` is observable
+> on entries (observe door and table sync), the ledger is `usage_ledger`
+> (loobric_server/usage_ledger.py), and the derived instance total is
+> write-through-materialized on every contribution. Implementation notes:
+> the FIRST observation of an entry's counter establishes the baseline and
+> contributes nothing (pre-Loobric hours are never invented; a human
+> starting-balance assert is deferred), and "binding unchanged across the
+> interval" is judged by comparing the interval's endpoints
+> (`tool_table_entry_records.usage_baseline_instance_id` vs the current
+> binding) — an unbind→rebind of the same instance WITHIN one interval is
+> indistinguishable from unchanged. v1 requires `unit: "h"`; controllers
+> reporting minutes convert client-side. The public spec page (LABELS.md)
+> shows the derived total verbatim — the sum, never the ledger.
+
+Controllers track tool life. A Haas offset register carries a cumulative
+usage counter for its tool — but that counter is **per-machine**: mount the
+same physical tool on two machines and *neither* knows its true total. The
+machine's counter is also **resettable** (an operator zeroes it on an insert
+change). So no controller can ever state a tool's lifetime usage, and no
+single observation can be the total.
+
+The consequence drives the whole design: **a lifetime total is not an
+observable — it is `derived`.** Each machine honestly observes only its own
+counter; the total is a server-side computation over attributed
+contributions, and that decomposition *is* the provenance.
+
+Four layers, each in its existing lane:
+
+1. **Raw controller tool-life fields** (usage count, load limits, the native
+   row) ride in the entry's client-namespaced `data`/`extra`, lossless, like
+   everything else core preserves but does not understand.
+2. **The machine's counter** is an observable canonical field on the
+   `ToolTableEntry`:
+
+   ```jsonc
+   "usage_hours": { "value": 25.3, "unit": "h",
+                    "source": "observed:haas@vf2" }
+   ```
+
+   Written through the **observe** door, scope-gated like any observable. It
+   is the controller's counter *verbatim* — that machine's ledger for that
+   row, nothing more. It resets when the controller's does.
+3. **The usage ledger** (internal, append-only — like `machine_set_maps`, an
+   implementation entity users never meet by table name) turns counter
+   observations into attributed **contributions**. On each observation the
+   server computes the delta against the previous observation for that entry:
+
+   - **Δ > 0, entry has a confirmed Binding unchanged since the previous
+     observation** → append a contribution
+     `{ instance_id, machine_id, entry_id, metric: "hours", amount: Δ,
+     source: "observed:haas@vf2" }` and advance the baseline.
+   - **Δ < 0** → a counter reset. Re-baseline; contribute nothing. A reset
+     often *means* something physical (new insert) — surfacing it as an inbox
+     nudge is a natural later layer.
+   - **Δ > 0 but the entry is unbound, the binding is unconfirmed, or the
+     binding changed within the interval** → the hours are **orphaned**:
+     recorded against the entry with `instance_id: null`, surfaced (a note in
+     the setup view / inbox), never guessed onto an instance. A human may
+     later attribute them — that is an explicit act, like confirming a
+     binding.
+
+   Counters are **deltas, never gauges**: syncing a resettable cumulative
+   counter as a value is how totals get double-counted or silently lost.
+4. **The instance's lifetime total** is canonical on the
+   `ToolInstanceRecord`, and its source is the ledger:
+
+   ```jsonc
+   "usage": {
+     "hours": { "value": 37.4, "unit": "h", "source": "derived:usage-ledger" }
+   }
+   ```
+
+   Recomputable at any time; stale only until the next recompute — exactly
+   the `derived` semantics of §4. Provenance is preserved because the total
+   decomposes on demand: *37.4 h = 25.3 `observed:haas@vf2` +
+   12.1 `observed:haas@vf3`*. Nobody ever claimed the total; it is a sum of
+   individually machine-attributed facts. No door writes it directly — a
+   client attempting to observe or assert it is a `400`.
+
+Two existing pieces make cross-machine accumulation well-defined:
+
+- **Install-once** (§8): a physical tool is bound to at most one entry at a
+  time, so every delta has exactly one instance it *can* belong to.
+- **Bindings survive pocket shuffles**: attribution follows
+  `bound_instance_id`, so the tool wandering between ATC pockets — or between
+  a 200-register offset table and a 16-slot carousel — never touches it.
+
+**Deliberately not in scope: counter writeback.** The server never writes the
+global total down into a machine's counter. Doing so would turn every
+controller counter into a mixed ledger (its next observation would include
+hours it didn't cut) and require per-entry baseline bookkeeping on every
+write. The true total lives in Loobric and the status view; the machine's
+counter stays the machine's own. Same posture as reconciliation: the server
+informs, it is never an interlock. Writeback — so a machine's tool-life alarm
+reflects true cross-machine wear — is a possible later, careful feature.
+
+> **Scope / deferred:** implemented: `usage_hours` on the entry (observe
+> door + `/sync`), the ledger with the three delta rules, the derived
+> `usage.hours` on the instance (asserting/observing it is the promised
+> 400), read-side decomposition (`GET
+> /tool-instance-records/{id}/usage`, `GET
+> /tool-table-entry-records/{id}/usage`), and read-only orphan surfacing in
+> the instance inbox (`usage_orphans`). Deferred: a `cycles` metric (same
+> ledger shape, `metric: "cycles"`), reset inbox nudges, human attribution
+> of orphaned hours, starting balances for pre-Loobric tools, and counter
+> writeback.
+
 ---
 
 ## 8. Invariants & reconciliation
@@ -418,6 +540,13 @@ hold; carry everything else through verbatim.*
   installed, its component instances are occupied by it; a component instance
   cannot be live in two installed assemblies at once. The schema permits this
   (composition is explicit); the enforcement lands with the assembly work.
+- **Usage accrues by delta, through bindings (§7.8).** Machine
+  counters are resettable per-machine ledgers, never gauges of a tool's life.
+  The server credits only positive counter deltas, only to an entry's
+  confirmed bound instance, only when the binding is unchanged across the
+  observation interval; a reset re-baselines, and ambiguous hours are orphaned
+  and surfaced — never guessed onto an instance. An instance's lifetime total
+  is always `derived:usage-ledger`; no door writes it directly.
 - **Number reconciliation.** For the machine's active setup, the tool table is
   fact and the set's claims are compared against it at read time — but the
   claim is **never renumbered by observation** (MAPPING_PLAN §5.1): agreement

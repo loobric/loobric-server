@@ -74,6 +74,24 @@ class TestFourCells:
         assert as_bob.status_code == 200
         assert as_bob.text == anonymous.text
 
+    def test_owner_public_preview_is_byte_identical(self, labeled_world):
+        """?view=public: the owner previews EXACTLY what anyone else's scan
+        shows — same body, no preview chrome, nothing extra."""
+        client, code, blank_code = labeled_world
+        preview = client.get(f"/t/{code}", params={"view": "public"})
+        client.cookies.clear()
+        anonymous = client.get(f"/t/{code}")
+        assert preview.status_code == 200
+        assert preview.text == anonymous.text
+        # For an anonymous caller the param is a no-op.
+        assert client.get(f"/t/{code}",
+                          params={"view": "public"}).text == anonymous.text
+
+    def test_owner_public_preview_of_blank_label_is_landing(self, labeled_world):
+        client, _, blank_code = labeled_world
+        r = client.get(f"/t/{blank_code}", params={"view": "public"})
+        assert r.status_code == 404      # what a stranger's scan gets
+
     def test_owner_scan_of_blank_label(self, labeled_world):
         client, _, blank_code = labeled_world
         r = client.get(f"/t/{blank_code}")

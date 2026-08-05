@@ -3,6 +3,30 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.9.1] — 2026-08-05
+
+### Changed
+- **Web UI reorganized for consistency.** Every entity is now a list → detail
+  pair with the same chrome: Tools splits into a slim list and a detail page
+  carrying all actions (rename, labels, retire, delete); a scanned label's
+  deep link opens the detail directly. **Labels** is a top-level tab (blank
+  inventory + on-tool labels + printing); **Audit** moved off the nav into
+  the account page's admin section (with the account roster — the Users tab
+  is gone); **Account** is the email top right, no longer a tab; the account
+  page gained a proper red-bordered **danger zone** (delete all tool data /
+  one-step reset-to-demo).
+- **One-press printing.** Picking a stock and pressing Print mints a full
+  sheet immediately; only the new "Custom count…" choice prompts. The picked
+  stock also applies to per-label reprints (previously hardwired to Avery).
+
+### Added
+- **Public-view preview**: `/t/<code>?view=public` shows the owner exactly
+  what anyone else's scan shows — byte-identical to the anonymous rendering
+  (tested), a no-op for everyone else. The Labels tab and tool detail link
+  both views per label.
+- **`thermal-4x6` sheet stock**: 4″×6″ adhesive shipping labels (thermal)
+  as a 12-up cut-apart grid (2 × 6 of 2″×1″) with faint cut guides.
+
 ## [0.9.0] — 2026-08-04
 
 ### Added

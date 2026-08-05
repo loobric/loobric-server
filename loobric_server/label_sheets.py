@@ -41,6 +41,17 @@ STOCKS = {
         "margin_left": 0, "margin_top": 0,
         "pitch_x": 57 * mm, "pitch_y": 32 * mm,
     },
+    # A 4x6" adhesive shipping label (thermal, portrait feed) used as a
+    # cut-apart sheet: 12 tool-sized stickers per label, 2 x 6 grid of
+    # 2" x 1" cells. Cut lines are drawn between cells.
+    "thermal-4x6": {
+        "page": (4 * inch, 6 * inch),
+        "columns": 2, "rows": 6,
+        "cell_width": 1.9 * inch, "cell_height": 0.95 * inch,
+        "margin_left": 0.1 * inch, "margin_top": 0.1 * inch,
+        "pitch_x": 1.9 * inch, "pitch_y": 0.95 * inch,
+        "cut_lines": True,
+    },
 }
 
 _PAD = 4  # inner cell padding, pt
@@ -90,6 +101,24 @@ def _draw_cell(c: canvas.Canvas, stock: dict, position: int,
     c.drawString(text_x, cell_y + stock["cell_height"] * 0.18, "/t/" + code)
 
 
+def _draw_cut_lines(c: canvas.Canvas, stock: dict):
+    """Faint guides between cells for cut-apart stocks (one big adhesive
+    label carrying a grid of stickers)."""
+    page_width, page_height = stock["page"]
+    top = page_height - stock["margin_top"]
+    bottom = top - stock["rows"] * stock["pitch_y"]
+    left = stock["margin_left"]
+    right = left + stock["columns"] * stock["pitch_x"]
+    c.setStrokeColorRGB(0.75, 0.75, 0.75)
+    c.setLineWidth(0.3)
+    for i in range(1, stock["columns"]):
+        x = left + i * stock["pitch_x"]
+        c.line(x, bottom, x, top)
+    for j in range(1, stock["rows"]):
+        y = top - j * stock["pitch_y"]
+        c.line(left, y, right, y)
+
+
 def render_sheet(labels, stock_name: str, start_at: int = 0) -> bytes:
     """Render (code, url) pairs onto sticker stock; returns PDF bytes.
 
@@ -109,10 +138,14 @@ def render_sheet(labels, stock_name: str, start_at: int = 0) -> bytes:
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=stock["page"])
+    if stock.get("cut_lines"):
+        _draw_cut_lines(c, stock)
     position = start_at
     for code, url in labels:
         if position >= per_page:
             c.showPage()
+            if stock.get("cut_lines"):
+                _draw_cut_lines(c, stock)
             position = 0
         _draw_cell(c, stock, position, code, url)
         position += 1

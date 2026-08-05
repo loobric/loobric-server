@@ -31,6 +31,7 @@
   main { max-width:760px; margin:0 auto; padding:1rem; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px;
           padding:.9rem 1rem; margin-bottom:.8rem; }
+  .card.danger { border-color:var(--bad); }
   .muted { color:var(--dim); font-size:.9rem; }
   .row { display:flex; justify-content:space-between; gap:.6rem; align-items:baseline; flex-wrap:wrap; }
   .id { font-family:ui-monospace,monospace; font-size:.8rem; color:var(--dim); }
@@ -187,8 +188,8 @@
   <h1>Loobric</h1>
   <nav id="tabs"></nav>
   <span class="spacer"></span>
-  <span id="whoami" class="muted"></span>
-  <button id="logout" class="mini reject" style="display:none" onclick="doLogout()">Sign out</button>
+  <span id="whoami" class="muted link-ish" title="account, keys, audit"
+        onclick="setTab('account')"></span>
 </header>
 
 <main id="view"></main>
@@ -284,11 +285,14 @@
 "use strict";
 // Machines is the ONE binding surface — proposals (the old Inbox) are folded in
 // as a "pending review" band/filter on the entries themselves.
-const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["audit","Audit"],["account","Account"]];
-let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
+// Nav is the DATA (machines, tools, sets, catalog, labels); housekeeping
+// (account, keys, audit, demo) lives behind the email top-right, and each
+// entity tab is a list -> detail pair with the same layout.
+const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["labels","Labels"]];
+let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, toolSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
               machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{},
               activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[],
-              labels:[], focusTool:null, _focusScrolled:false };
+              labels:[] };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -354,7 +358,7 @@ async function doAuth(ev){ ev.preventDefault();
 
 async function doLogout(){
   try { await api("POST","/auth/logout"); } catch(e){ /* clear the UI regardless */ }
-  state.me = null; $("#whoami").textContent = ""; $("#logout").style.display = "none";
+  state.me = null; $("#whoami").textContent = "";
   $("#email").value = ""; $("#password").value = ""; setAuthMode("login");
   $("#login").style.display = "flex";
 }
@@ -384,7 +388,6 @@ async function refresh(){
     state.machines=machines.items; state.audit=audit.logs||[]; state.catalogs=catalog.items;
     state.keys = Array.isArray(keys) ? keys : (keys.items||[]); state.me = me||null;
     $("#whoami").textContent = (me && me.email) ? me.email : "";
-    $("#logout").style.display = me ? "" : "none";
     state.machineNames=Object.fromEntries(machines.items.map(m=>[rid(m), cf(m,"name")||rid(m).slice(0,8)]));
     state.toolNames=Object.fromEntries(tools.items.map(t=>[rid(t), cf(t,"name")||rid(t).slice(0,8)]));
     state.proposalByEntry=Object.fromEntries(inbox.items.map(p=>[p.entry.id, p]));
@@ -428,14 +431,11 @@ function isAdmin(me){ return !!me && (me.is_admin === true || me.role === "admin
 
 function render(){
   const pending = pendingEntries().length;
-  // The Users tab is admin-only — append it just for admins (the server gates the
-  // data too, so this is convenience, not the security boundary).
-  const tabs = isAdmin(state.me) ? TABS.concat([["users","Users"]]) : TABS;
-  if(state.tab==="users" && !isAdmin(state.me)) state.tab="machines";
-  $("#tabs").innerHTML = tabs.map(([id,label])=>
+  $("#tabs").innerHTML = TABS.map(([id,label])=>
     `<button class="${state.tab===id?"active":""}" onclick="setTab('${id}')">${label}`+
     (id==="machines"&&pending?`<span class="n">${pending}</span>`:"")+`</button>`).join("");
-  const body = {tools:renderTools,toolsets:renderToolSets,machines:renderMachines,catalog:renderCatalog,audit:renderAudit,account:renderAccount,users:renderUsers}[state.tab]();
+  $("#whoami").style.color = state.tab==="account" ? "var(--ink)" : "";
+  const body = {tools:renderTools,toolsets:renderToolSets,machines:renderMachines,catalog:renderCatalog,labels:renderLabels,account:renderAccount}[state.tab]();
   // A fresh account is empty, which makes Loobric hard to "see". Offer the demo
   // right where a first-timer lands — but not on the Account tab, which already
   // carries the demo/reset controls.
@@ -444,28 +444,22 @@ function render(){
       <div class="row"><strong>Your account is empty</strong></div>
       <div class="explain" style="margin-top:.4rem">New here? Load a small sample
         &mdash; a machine, a two-maker catalog, a tool set, and a tool table &mdash;
-        to see how the pieces fit. Clear it any time from the Account tab.</div>
+        to see how the pieces fit. Clear it any time from your account page (your email, top right).</div>
       <div class="arow" style="margin-top:.6rem"><button class="mini create" onclick="addDemoData()">Add demo data</button></div>
     </div>` : "";
   $("#view").innerHTML = banner + body;
-  // Deep-link focus (#tool/<id>): scroll the focused card into view once its
-  // data has rendered; the outline stays until the user changes tabs.
-  if(state.tab==="tools" && state.focusTool && !state._focusScrolled){
-    const el = document.getElementById("tool-card-"+state.focusTool);
-    if(el){ el.scrollIntoView({block:"center"}); state._focusScrolled=true; }
-  }
 }
 function setTab(t){ state.tab=t; state.catalogSel=null; state.setSel=null; state.machineSel=null;
-  state.focusTool=null; state._focusScrolled=false;
+  state.toolSel=null;
   if(location.hash) history.replaceState(null,"",location.pathname);
   render(); refresh(); }
 
 // ---- hash routing (the ONE deep link: #tool/<id>, the resolver's owner view
-// lands here from a scanned label) ------------------------------------------
+// lands here from a scanned label — straight onto the tool's detail page) ----
 function applyHash(){
   const m = location.hash.match(/^#tool\/([0-9a-fA-F-]{36})$/);
   if(!m) return;
-  state.tab="tools"; state.focusTool=m[1]; state._focusScrolled=false;
+  state.tab="tools"; state.toolSel=m[1];
   render();
 }
 window.addEventListener("hashchange", applyHash);
@@ -479,6 +473,16 @@ async function addDemoData(){
   try{
     await api("POST","/account/seed-demo",{});
     toast("Demo data added — explore the tabs.");
+    refresh();
+  }catch(e){ toast(e.message); }
+}
+async function resetToDemo(){
+  if(!(await confirmDialog("Delete ALL tool data in this account and replace it "+
+       "with the demo set? Your login and API keys are kept."))) return;
+  try{
+    await api("POST","/account/reset",{});
+    await api("POST","/account/seed-demo",{});
+    toast("Reset to demo data.");
     refresh();
   }catch(e){ toast(e.message); }
 }
@@ -527,7 +531,9 @@ async function deleteRecord(id){ const t=state.tools.find(x=>rid(x)===id);
   const nlbl=labelsFor(id).length;
   const burn=nlbl?` Its ${nlbl===1?"label is":nlbl+" labels are"} burned — the printed code${nlbl===1?"":"s"} will stop resolving (unlabel first to keep a sticker reusable).`:"";
   if(!(await confirmDialog(`Delete tool "${cf(t,"name")||id.slice(0,8)}"? Any entry holding it is unbound (its data stays).${burn}`))) return;
-  try{ await api("DELETE","/tool-instance-records/"+id); toast("Deleted tool."); refresh(); }catch(e){ toast(e.message); } }
+  try{ await api("DELETE","/tool-instance-records/"+id);
+    if(state.toolSel===id) state.toolSel=null;
+    toast("Deleted tool."); refresh(); }catch(e){ toast(e.message); } }
 async function deleteMachine(id){
   if(!(await confirmDialog(`Delete machine "${state.machineNames[id]}" and its tool table? Tool instances stay.`))) return;
   try{ const r=await api("DELETE","/machine-records/"+id); state.machineSel=null; toast(`Deleted machine (${r.entries_removed} entr${r.entries_removed===1?"y":"ies"}).`); refresh(); }catch(e){ toast(e.message); } }
@@ -609,19 +615,40 @@ async function apiPdf(path, body){
   setTimeout(()=>URL.revokeObjectURL(url), 60000);
 }
 
+// Sticker stocks the sheet endpoint knows; the picker on the Labels tab
+// remembers the shop's printer for both minting and reprints.
+const LABEL_STOCKS = {
+  "avery-5160":   {label:"Avery 5160 sheet (30-up)",        per:30},
+  "thermal-4x6":  {label:'4"x6" thermal label (12, cut apart)', per:12},
+  "thermal-57x32":{label:"57x32 mm thermal roll (1/label)",  per:1},
+};
+// Picking a stock and pressing Print mints one full sheet, no questions;
+// "Custom count…" is the one choice that asks (and prints on the last
+// concrete stock picked).
+let labelStock = "avery-5160", labelCustom = false;
+function setLabelChoice(v){
+  if(v==="custom") labelCustom=true;
+  else if(LABEL_STOCKS[v]){ labelCustom=false; labelStock=v; }
+}
+
 // Mint-and-print a batch of blanks: the drawer workflow (stick one on whatever
 // you're holding, then scan it to attach a record).
 async function printBlankSheet(){
-  const raw = await promptDialog("How many blank labels? (30 fills an Avery 5160 sheet)", "30");
-  if(raw===null) return;
-  const n = parseInt(raw, 10);
-  if(!(n>=1 && n<=100)){ toast("Count must be 1-100."); return; }
-  try{ await apiPdf("/labels/sheet", {count:n, stock:"avery-5160"});
+  let n = LABEL_STOCKS[labelStock].per;
+  if(labelCustom){
+    const raw = await promptDialog(
+      `How many blank labels? (printed on ${LABEL_STOCKS[labelStock].label})`,
+      String(n));
+    if(raw===null) return;
+    n = parseInt(raw, 10);
+    if(!(n>=1 && n<=100)){ toast("Count must be 1-100."); return; }
+  }
+  try{ await apiPdf("/labels/sheet", {count:n, stock:labelStock});
        toast(n+" blank label(s) minted — print at 100% scale."); refresh(); }
   catch(e){ toast(e.message); }
 }
 async function reprintLabel(labelId){
-  try{ await apiPdf("/labels/sheet", {label_ids:[labelId], stock:"avery-5160"}); }
+  try{ await apiPdf("/labels/sheet", {label_ids:[labelId], stock:labelStock}); }
   catch(e){ toast(e.message); }
 }
 // Put a label on a tool: a blank code from the sheet on the bench, or mint one.
@@ -648,7 +675,9 @@ function labelChips(t){
   const lbls = labelsFor(rid(t));
   const chips = lbls.map(l=>
     `<span class="pill info"><a href="/t/${esc(l.code)}" target="_blank" rel="noopener"
-       style="color:inherit" title="open the label's page">${esc(l.code)}</a></span>
+       style="color:inherit" title="what you see when you scan it">${esc(l.code)}</a></span>
+     <a class="dl" href="/t/${esc(l.code)}?view=public" target="_blank" rel="noopener"
+       title="exactly what anyone else's scan shows">public view</a>
      <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button>
      <button class="mini link" onclick="unlabelTool('${rid(t)}','${esc(l.code)}')">Unlabel</button>`).join(" ");
   return `<div class="row" style="margin-top:.4rem"><span>${chips||'<span class="muted">no labels</span>'}</span>
@@ -665,41 +694,111 @@ async function unretireTool(id){
   try{ await api("POST","/tool-instance-records/"+id+"/assert",{path:"status",value:null,actor:"human@web"});
        toast("Back in service."); refresh(); }catch(e){ toast(e.message); } }
 
-// ---- Tools (instances) -----------------------------------------------------
-function renderTools(){
-  const blanks = blankLabels().length;
-  const toolbar = `<div class="card"><div class="row">
-      <span><strong>Labels</strong> <span class="muted">${blanks} blank on hand —
-        stickers link the tool in the drawer to its record (scan or type the code at /t/&lt;code&gt;)</span></span>
-      <button class="mini create" onclick="printBlankSheet()">Print blank labels…</button>
-    </div></div>`;
-  return toolbar + renderToolCards();
-}
-function renderToolCards(){
-  if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
+// ---- Tools: list -> detail (the same pattern as machines and tool sets) ----
+function openTool(id){ state.tab="tools"; state.toolSel=id; render(); }
+function backToTools(){ state.toolSel=null;
+  if(location.hash) history.replaceState(null,"",location.pathname); render(); }
+
+// entry rows holding each instance: { instance_id: [{m, n}, ...] }
+function _boundAtMap(){
   const boundAt={};
   for(const m of state.machines) for(const s of (state.entriesByMachine[rid(m)]||[])){
     const b=cf(s,"bound_instance_id"); if(b)(boundAt[b]=boundAt[b]||[]).push({m,n:cf(s,"tool_number")}); }
-  return state.tools.map(t=>{
-    const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), where=(boundAt[rid(t)]||[]);
-    const hours=cf(t,"usage.hours"), retired=cf(t,"status")==="retired";
-    const styles=[state.focusTool===rid(t)?"outline:2px solid var(--ok)":"",
-                  retired?"opacity:.65":""].filter(Boolean).join(";");
-    return `<div class="card" id="tool-card-${rid(t)}"${styles?` style="${styles}"`:""}>
-      <div class="row"><strong>${esc(cf(t,"name")||"(unnamed)")}</strong>
-        <span>${retired?'<span class="pill unbound">retired</span> ':""}${idLink(rid(t))}
-          <button class="mini link" onclick="setName('${rid(t)}')">${cf(t,"name")?"Rename":"Set name"}</button></span></div>
-      <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h total use":""}</div>`+
-      mediaSection(t,"tool-instance-records")+
-      labelChips(t)+
-      where.map(w=>`<div class="row" style="margin-top:.4rem"><span><span class="pill bound">bound</span> T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span></div>`).join("")+
-      (retired&&where.length?`<div class="row" style="margin-top:.4rem"><span class="pill unbound">retired but still mounted</span></div>`:"")+
-      `<div class="row" style="margin-top:.6rem"><span class="muted">${where.length} binding(s)</span>
-        <span class="rowact">
-          <button class="mini link" onclick="${retired?"unretireTool":"retireTool"}('${rid(t)}')">${retired?"Return to service":"Retire"}</button>
-          <button class="unbind" onclick="deleteRecord('${rid(t)}')">Delete tool</button></span></div>`+
-    `</div>`;
+  return boundAt;
+}
+
+function renderTools(){
+  if(state.toolSel) return renderToolDetail();
+  if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
+  const boundAt=_boundAtMap();
+  const rows = state.tools.map(t=>{
+    const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), hours=cf(t,"usage.hours");
+    const retired=cf(t,"status")==="retired", where=(boundAt[rid(t)]||[]);
+    const nlbl=labelsFor(rid(t)).length;
+    return `<div class="trow">
+      <span class="tinfo">
+        <strong class="link-ish" onclick="openTool('${rid(t)}')">${esc(cf(t,"name")||"(unnamed)")}</strong>
+        <span class="muted">${shape?esc(shape):""}${dia!=null?" &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h":""}</span>
+        ${retired?'<span class="pill unbound">retired</span>':""}
+        ${where.map(w=>`<span class="pill bound">T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span>`).join(" ")}
+        ${nlbl?`<span class="pill info">${nlbl} label${nlbl===1?"":"s"}</span>`:""}
+      </span>
+    </div>`;
   }).join("");
+  return `<div class="card">${rows}</div>`;
+}
+
+function renderToolDetail(){
+  const t=state.tools.find(x=>rid(x)===state.toolSel);
+  if(!t) return `<div class="empty">Tool not found.<br><span class="link-ish" onclick="backToTools()">Back to tools</span></div>`;
+  const id=rid(t), where=(_boundAtMap()[id]||[]);
+  const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), hours=cf(t,"usage.hours");
+  const retired=cf(t,"status")==="retired";
+  const bindings = where.length
+    ? where.map(w=>`<div class="trow"><span class="tinfo">
+        <span class="pill bound">bound</span> T${w.n} @ ${esc(state.machineNames[rid(w.m)])}
+        ${retired?'<span class="pill unbound">retired tool mounted</span>':""}
+      </span></div>`).join("")
+    : `<div class="muted" style="padding:.45rem 0">Not mounted on any machine.</div>`;
+  return `<div class="row" style="margin-bottom:.6rem">
+      <button class="mini link" onclick="backToTools()">&#x2190; Back to tools</button>
+      <span class="rowact">
+        <button class="mini link" onclick="setName('${id}')">${cf(t,"name")?"Rename":"Set name"}</button>
+        <button class="mini link" onclick="${retired?"unretireTool":"retireTool"}('${id}')">${retired?"Return to service":"Retire"}</button>
+        <button class="unbind" onclick="deleteRecord('${id}')">Delete tool</button></span></div>
+    <div class="card">
+      <div class="row"><strong>${esc(cf(t,"name")||"(unnamed)")}</strong>
+        <span class="rowact">${retired?'<span class="pill unbound">retired</span>':""}${idLink(id)}</span></div>
+      <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h total use":""}</div>
+      ${mediaSection(t,"tool-instance-records")}
+      <div class="section-h">Labels</div>
+      ${labelChips(t)}
+      <div class="section-h">Bindings</div>
+      ${bindings}
+    </div>`;
+}
+
+// ---- Labels tab: the sticker inventory --------------------------------------
+function renderLabels(){
+  const blanks=blankLabels(), used=state.labels.filter(l=>l.entity_id);
+  const stockPicker = `<select class="picker" onchange="setLabelChoice(this.value)">`+
+    Object.entries(LABEL_STOCKS).map(([v,s])=>
+      `<option value="${v}" ${!labelCustom&&labelStock===v?"selected":""}>${esc(s.label)}</option>`).join("")+
+    `<option value="custom" ${labelCustom?"selected":""}>Custom count&hellip;</option>`+
+    `</select>`;
+  const header = `<div class="card">
+    <div class="row"><strong>Physical labels</strong>
+      <span class="rowact">${stockPicker}
+        <button class="mini create" onclick="printBlankSheet()">Print blank labels&hellip;</button></span></div>
+    <div class="explain" style="margin-top:.6rem">Stickers link the tool in the
+      drawer to its record: print blanks, stick one on a tool or its box, then
+      scan it (or open <code>/t/&lt;code&gt;</code>) to attach a record. Anyone
+      scanning a labeled tool sees its public spec page; only you see more.</div>
+  </div>`;
+  const blankRows = blanks.length ? blanks.map(l=>`<div class="trow">
+      <span class="tinfo"><span class="id">${esc(l.code)}</span>
+        <a class="dl" href="/t/${esc(l.code)}" target="_blank" rel="noopener">/t/${esc(l.code)}</a></span>
+      <span class="rowact">
+        <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button>
+        <button class="mini del" onclick="deleteLabel('${l.id}','${esc(l.code)}')">Delete</button></span>
+    </div>`).join("") : `<div class="muted" style="padding:.45rem 0">No blank labels on hand.</div>`;
+  const usedRows = used.length ? used.map(l=>`<div class="trow">
+      <span class="tinfo"><span class="id">${esc(l.code)}</span>
+        <strong class="link-ish" onclick="openTool('${l.entity_id}')">${esc(state.toolNames[l.entity_id]||l.entity_id.slice(0,8))}</strong></span>
+      <span class="rowact">
+        <a class="dl" href="/t/${esc(l.code)}?view=public" target="_blank" rel="noopener"
+           title="exactly what anyone else's scan shows">public view</a>
+        <a class="dl" href="/t/${esc(l.code)}" target="_blank" rel="noopener"
+           title="what you see when you scan it">owner view</a>
+        <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button></span>
+    </div>`).join("") : `<div class="muted" style="padding:.45rem 0">No labels on tools yet.</div>`;
+  return header
+    + `<div class="card"><div class="section-h" style="margin-top:0">Blank (${blanks.length})</div>${blankRows}</div>`
+    + `<div class="card"><div class="section-h" style="margin-top:0">On tools (${used.length})</div>${usedRows}</div>`;
+}
+async function deleteLabel(id, code){
+  if(!(await confirmDialog(`Delete blank label ${code}? Its printed code will stop resolving forever.`))) return;
+  try{ await api("DELETE","/labels/"+id); toast("Label deleted."); refresh(); }catch(e){ toast(e.message); }
 }
 
 // ---- Tool Sets -------------------------------------------------------------
@@ -1255,7 +1354,8 @@ function renderAccount(){
   return `
     <div class="card">
       <div class="row"><strong>${esc(me.email||"Account")}</strong>
-        ${me.role?`<span class="pill info">${esc(me.role)}</span>`:""}</div>
+        <span class="rowact">${me.role?`<span class="pill info">${esc(me.role)}</span>`:""}
+          <button class="mini reject" onclick="doLogout()">Sign out</button></span></div>
       <div class="row" style="margin-top:.7rem"><span class="muted">Password</span>
         <button class="mini link" onclick="openChangePw()">Change password</button></div>
     </div>
@@ -1267,19 +1367,34 @@ function renderAccount(){
         <b>once</b> at creation &mdash; copy it then. Revoking takes effect immediately.</div>
       ${keyRows}
     </div>
-    <div class="card">
-      <div class="row"><strong>Demo data</strong></div>
-      <div class="explain" style="margin-top:.6rem">Load a small sample &mdash; a
-        machine, a two-maker catalog, a couple of tools, a tool set, and a tool
-        table &mdash; to explore Loobric. Or reset to clear all tool data and start
-        fresh with your own. Both affect only this account; your login and API keys
-        are kept.</div>
+    ${isAdmin(me) ? adminSection() : ""}
+    <div class="section-h" style="color:var(--bad)">Danger zone</div>
+    <div class="card danger">
+      <div class="explain" style="margin-top:0">These delete tool data in this
+        account &mdash; records, machines, sets, labels, usage history. Your login
+        and API keys are kept. There is no undo.</div>
       <div class="arow" style="margin-top:.6rem">
         ${accountIsEmpty()
           ? `<button class="mini create" onclick="addDemoData()">Add demo data</button>`
-          : `<button class="mini" disabled title="Reset first to reload the demo">Add demo data</button>`}
-        <button class="mini del" onclick="resetAccount()">Reset tool data</button>
+          : `<button class="mini del" onclick="resetToDemo()">Reset to demo data</button>`}
+        <button class="mini del" onclick="resetAccount()">Delete all tool data</button>
       </div>
+    </div>`;
+}
+
+// Admin-only housekeeping, folded into the account page (nav stays data-only):
+// the account roster and the audit log. The server gates the data too — this
+// is presentation, not the security boundary.
+function adminSection(){
+  return `
+    <div class="section-h">Administration</div>
+    <div class="card">
+      <div class="row"><strong>Accounts</strong><span class="muted">${(state.users||[]).length} account(s)</span></div>
+      ${usersTable()}
+    </div>
+    <div class="card">
+      <div class="row"><strong>Audit log</strong><span class="muted">latest 50, this account</span></div>
+      ${auditTable()}
     </div>`;
 }
 
@@ -1372,29 +1487,29 @@ async function submitChangePw(){
 }
 
 // ---- Audit -----------------------------------------------------------------
-function renderUsers(){
+function usersTable(){
   // Admin-only roster. The server never sends password hashes or key material —
   // only the per-account summary, so there is nothing secret to leak here.
   const us = state.users || [];
-  const count = `<div class="row" style="margin-bottom:.5rem"><strong>${us.length}</strong>&nbsp;account(s)</div>`;
-  if(!us.length) return count + `<div class="empty">No accounts.</div>`;
+  if(!us.length) return `<div class="muted" style="padding:.45rem 0">No accounts.</div>`;
   const flags = u => [u.is_admin?"admin":null, u.is_active===false?"inactive":null,
                       u.is_verified?"verified":null].filter(Boolean).join(", ");
-  return count + `<div class="card"><table>`+
+  return `<table>`+
     `<tr><th>email</th><th>role</th><th>keys</th><th>created</th><th></th></tr>`+
     us.map(u=>`<tr><td>${esc(u.email||"")}</td><td>${esc(u.role||"")}</td>`+
       `<td>${u.api_key_count||0}</td>`+
       `<td class="muted">${esc((u.created_at||"").replace("T"," ").slice(0,16))}</td>`+
       `<td class="muted">${esc(flags(u))}</td></tr>`).join("")+
-    `</table></div>`;
+    `</table>`;
 }
 
-function renderAudit(){
-  if(!state.audit.length) return `<div class="empty">No audit entries.</div>`;
-  return `<div class="card"><table><tr><th>when</th><th>op</th><th>what</th></tr>`+
+// Rendered inside the Account page (audit is housekeeping, not shop data).
+function auditTable(){
+  if(!state.audit.length) return `<div class="muted" style="padding:.45rem 0">No audit entries.</div>`;
+  return `<table><tr><th>when</th><th>op</th><th>what</th></tr>`+
     state.audit.map(l=>`<tr><td class="muted">${esc((l.timestamp||"").replace("T"," ").slice(0,16))}</td>
       <td>${esc(l.operation)}</td><td>${esc(l.entity_type)} ${idLink(l.entity_id)}</td></tr>`).join("")+
-    `</table></div>`;
+    `</table>`;
 }
 
 applyHash();

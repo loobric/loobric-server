@@ -58,7 +58,7 @@ def _landing(code: Optional[str]) -> HTMLResponse:
 
 
 @router.get("/t/{code}", response_class=HTMLResponse)
-def resolve_label(code: str, request: Request,
+def resolve_label(code: str, request: Request, view: Optional[str] = None,
                   db: Session = Depends(get_db),
                   user: Optional[User] = Depends(get_optional_user)):
     try:
@@ -71,6 +71,11 @@ def resolve_label(code: str, request: Request,
         return _landing(normalized)
 
     is_owner = user is not None and user.id == label.user_id
+    # ?view=public: the owner previewing what anyone else's scan shows —
+    # byte-identical to the anonymous rendering (it can only ever REDUCE
+    # what is shown, so it needs no gating; for a non-owner it's a no-op).
+    if view == "public":
+        is_owner = False
 
     instance = None
     if label.entity_id is not None and label.entity_type == "tool_instance":

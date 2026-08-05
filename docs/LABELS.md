@@ -50,6 +50,11 @@ Labeling a record is what makes its public page exist. Unlabeled records
 are never publicly reachable, and an unknown code is indistinguishable from
 someone else's blank one.
 
+**Previewing:** the owner can see exactly what anyone else's scan shows with
+`/t/<code>?view=public` — byte-identical to the anonymous rendering (the
+parameter can only reduce what is shown, so it needs no gating; for anyone
+else it is a no-op). The Web UI's Labels tab links both views per label.
+
 ## Workflows
 
 **Record first:** create the record, then `POST /api/v1/labels
@@ -93,6 +98,7 @@ Label lifecycle (founder decisions, 2026-08-04):
 | stock | for | layout |
 |---|---|---|
 | `avery-5160` | 30-up US Letter address sheets (and compatibles) | 3 × 10, 2⅝″ × 1″ |
+| `thermal-4x6` | 4″ × 6″ adhesive shipping labels (thermal) | 12-up, 2 × 6 of 2″ × 1″, faint cut guides — cut apart |
 | `thermal-57x32` | 57 × 32 mm thermal rolls | one label per page |
 
 Body: `{"count": N}` (mint and print blanks) **or** `{"label_ids": [...]}`

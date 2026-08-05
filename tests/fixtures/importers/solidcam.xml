@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<Results xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:ext="http://exslt.org/common">
+  <Tools>
+    <Tool Type="Milling" SubType="EndMill" UserType="6676918_END MILL HARVI I TE 1/4X1/4X3/4X2 1/2 S">
+      <param name="diameter" value="6.35" />
+      <param name="arbor diameter" value="6.35" />
+      <param name="total length" value="63.5" />
+      <param name="outside holder length" value="24.13" />
+      <param name="shoulder length" value="19.05" />
+      <param name="cutting edge length" value="19.05" />
+      <param name="shoulder diameter" value="6.35" />
+      <param name="shoulder angle" value="0" />
+      <param name="hlength" value="63.5" />
+      <param name="helical angle" value="36" />
+      <param name="number of teeth" value="4" />
+      <param name="rough" value="0" />
+      <param name="description" value="6676918" />
+      <param name="message1" value="order number: 6676918" />
+      <param name="message2" value="company code: KH -  Kennametal" />
+      <param name="message3" value="technical product number: 6676918" />
+      <param name="message5" value="coating name: AlTiN" />
+      <param name="unit" value="metric" />
+      <param name="units" value="metric" />
+      <param name="id" value="dummy_1" />
+      <Coolant>
+        <param name="through tool" value="True" />
+      </Coolant>
+      <Spin />
+      <Feed />
+      <FeedsAndSpins />
+      <offsets />
+      <Preset />
+    </Tool>
+  </Tools>
+</Results>

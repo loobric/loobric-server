@@ -1,0 +1,66 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<omtdx xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="25">
+  <formulas />
+  <materials />
+  <tools>
+    <tools folder="Fräswerkzeuge">
+      <tools folder="Fräswerkzeuge mit Schaft">
+        <tools folder="Langlochfräser">
+          <tool name="HARVI I TE 1/4X1/4X3/4X2 1/2 S - 6676918 - KH" type="endMill">
+            <param name="lengthOfUnit" value="mm" />
+            <param name="collar" value="0" />
+            <param name="coreDiameter" value="0" />
+            <param name="coreHeight" value="0" />
+            <param name="cuttingEdges" value="4" />
+            <param name="cuttingLength" value="19.05" />
+            <param name="cuttingMaterial" value="KCPM15" />
+            <param name="spindleRotation" value="clockwise" />
+            <param name="tapered" value="0" />
+            <param name="toolDiameter" value="6.35" />
+            <param name="toolShaftChamferDefMode" value="abs" />
+            <param name="toolShaftDiameter" value="6.35" />
+            <param name="toolShaftType" value="none" />
+            <param name="toolTotalLength" value="63.5" />
+            <param name="manufacturer" value="Kennametal" />
+            <param name="orderingCode" value="6676918" />
+            <tecsets>
+              <tecset type="milling">
+                <param name="lengthOfUnit" value="mm" />
+                <param name="coolants" value="1" />
+                <param name="cuttingDirection" value="upAndDown" />
+                <param name="cuttingLength" value="0" />
+                <param name="cuttingMaterial" value="KCPM15" />
+                <param name="cuttingSpeed" value="0" />
+                <param name="cuttingWidth" value="0" />
+                <param name="drillingFeedrate" value="0" />
+                <param name="feedratePerEdge" value="0" />
+                <param name="fullcutFeedrate" value="0" />
+                <param name="material" />
+                <param name="maxRedFeedrateAngle" value="90" />
+                <param name="plungeAngle" value="90" />
+                <param name="purpose" />
+                <param name="reducedFeedrate" />
+                <param name="spindleSpeedUnit" value="rpm" />
+                <param name="zFeedrate" />
+              </tecset>
+            </tecsets>
+            <geometry name="freeTip" active="1" withCoupling="1">
+              <cont2D>
+                <elem2D type="line" sx="0" sy="0" ex="3.175" ey="0" cuttingArea="1" />
+                <elem2D type="line" ex="3.175" ey="19.05" cuttingArea="1" />
+                <elem2D type="line" ex="3.175" ey="63.5" cuttingArea="0" />
+                <elem2D type="line" ex="-0" ey="63.5" cuttingArea="0" />
+              </cont2D>
+            </geometry>
+            <customData />
+          </tool>
+        </tools>
+      </tools>
+    </tools>
+  </tools>
+  <holders />
+  <extensions />
+  <inserts />
+  <toolHolders />
+  <ncTools />
+</omtdx>

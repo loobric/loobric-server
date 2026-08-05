@@ -3,6 +3,23 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.10.0] — 2026-08-05
+
+### Added
+- **Catalog import from manufacturer files** — the web-UI equivalent of
+  `loobric import`. `POST /api/v1/tool-catalog-records/import` accepts an
+  uploaded GTC package (ISO 13399 zip, with media), STEP P21, DIN 4000
+  XML/CSV, SolidCAM, or hyperMILL export (format sniffed by content) and
+  mirrors the CLI run driver exactly: one atomic create per parsed record
+  with server-stamped `asserted:<source>` provenance, the full raw payload
+  preserved verbatim in the record's import client section, and extracted
+  media attached. Re-import is idempotent (natural-key duplicates report as
+  existing); identity-floor gaps skip with reasons, never fabricate. The
+  Catalog tab gains an "Import manufacturer file…" control with a
+  created/existing/skipped/failed report. The importer parsers are vendored
+  from loobric-cli (MIT; both copies noted to keep in sync — the CLI keeps
+  offline parsing).
+
 ## [0.9.1] — 2026-08-05
 
 ### Changed

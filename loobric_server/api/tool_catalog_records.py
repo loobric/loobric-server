@@ -181,6 +181,116 @@ class AssertRequest(BaseModel):
     actor: str          # e.g. "catalog-import" or "human@inbox"
 
 
+@router.post("/import")
+async def import_catalog_file(file: UploadFile = File(...),
+                              actor: Optional[str] = Form(None),
+                              db: Session = Depends(get_db),
+                              user: User = Depends(door("assert"))):
+    """Import a manufacturer's downloaded tool-data file (GTC zip, STEP P21,
+    DIN 4000 XML/CSV, SolidCAM, hyperMILL) as catalog records — the web-UI
+    equivalent of `loobric import`.
+
+    Mirrors the CLI's run driver exactly: each parsed draft becomes an
+    ATOMIC create (the server stamps asserted:<source>; importers never
+    infer what the file didn't state), the full raw payload is preserved
+    verbatim in the record's import client section (lossless — unmapped
+    source codes survive for later promotion), and extracted media lands in
+    canonical.media. Natural-key duplicates are reported as already-existing,
+    never duplicated, so re-importing a catalog is idempotent. The report
+    partitions every draft: created / existing / skipped (identity floor) /
+    failed."""
+    import tempfile
+    from pathlib import Path as _Path
+    from loobric_server.importers import parse
+
+    suffix = _Path(file.filename or "upload").suffix or ".dat"
+    data = await file.read()
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = tmp.name
+    try:
+        try:
+            drafts = parse(tmp_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="could not parse %r as a known tool-data format "
+                       "(GTC zip, STEP P21, DIN 4000, SolidCAM, hyperMILL): %s"
+                       % (file.filename, exc))
+    finally:
+        _Path(tmp_path).unlink(missing_ok=True)
+    if not drafts:
+        raise HTTPException(
+            status_code=400,
+            detail="%r parsed but contained no catalog records" % file.filename)
+
+    report = {"format": drafts[0].source_format, "created": [],
+              "existing": [], "skipped": [], "failed": [],
+              "media_uploaded": 0, "media_failed": 0}
+
+    def _ident(draft):
+        return {"name": draft.name, "manufacturer": draft.manufacturer,
+                "product_code": draft.product_code}
+
+    for draft in drafts:
+        missing = draft.missing_identity()
+        if missing:
+            report["skipped"].append(
+                {**_ident(draft), "reason": "missing identity: " + ", ".join(missing)})
+            continue
+        src = (actor or "").strip() or draft.source_actor
+        try:
+            req = CreateRequest(actor=src, **draft.fields)
+        except Exception as exc:
+            report["failed"].append({**_ident(draft), "reason": str(exc)})
+            continue
+        try:
+            rec = create_catalog_record(req, db=db, user=user)
+        except HTTPException as exc:
+            if exc.status_code == 409:      # natural-key duplicate — idempotent
+                report["existing"].append(_ident(draft))
+            else:
+                report["failed"].append({**_ident(draft), "reason": exc.detail})
+            continue
+        rid = rec["internal"]["id"]
+        report["created"].append({"id": rid, **_ident(draft)})
+
+        # Lossless preservation: the full source payload in the import client
+        # section (the same shape the CLI's run driver writes).
+        try:
+            write_client_section(rid, draft.client_name, {
+                "client_version": "",
+                "data": {"format": draft.source_format,
+                         "class": draft.source_class,
+                         "properties": draft.raw}}, db=db, user=user)
+        except HTTPException as exc:
+            report["failed"].append(
+                {**_ident(draft),
+                 "reason": "created, but preserving the raw payload failed: %s"
+                           % exc.detail})
+
+        row = _owned(db, user, rid)
+        for mf in draft.media:
+            try:
+                canonical, _entry = _media.append_media(
+                    row.canonical, data=mf.data, role=mf.role,
+                    content_type=mf.content_type, filename=mf.filename,
+                    actor=src)
+                _validate_canonical(canonical)
+                row.canonical = canonical
+                row.version += 1
+                row.updated_by = user.id
+                create_audit_log(session=db, user_id=user.id, operation="ASSERT",
+                                 entity_type="tool_catalog_record", entity_id=rid,
+                                 changes={"path": "media", "role": mf.role,
+                                          "filename": mf.filename})
+                report["media_uploaded"] += 1
+            except Exception:
+                report["media_failed"] += 1
+        db.commit()
+    return report
+
+
 class CreateInstanceRequest(BaseModel):
     """Create a physical instance from this catalog type. The link-actor is NOT
     a client field — it defaults to the requesting context (the requester's own

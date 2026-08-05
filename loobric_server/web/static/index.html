@@ -1224,11 +1224,52 @@ function clientSections(rec){
 function openCatalog(id){ state.tab="catalog"; state.catalogSel=id; render(); }
 function backToCatalog(){ state.catalogSel=null; render(); }
 
+// Import a manufacturer's downloaded tool-data file (GTC zip, STEP P21,
+// DIN 4000 XML/CSV, SolidCAM, hyperMILL). Parsing and creation happen
+// server-side; re-importing is idempotent (duplicates report as existing).
+async function importCatalogFile(input){
+  const f = input.files && input.files[0];
+  input.value = "";                    // same file re-selectable next time
+  if(!f) return;
+  toast("Importing " + f.name + "…");
+  const form = new FormData();
+  form.append("file", f);
+  try{
+    const r = await fetch("/api/v1/tool-catalog-records/import",
+                          {method:"POST", credentials:"same-origin", body:form});
+    const rep = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(rep.detail || ("HTTP "+r.status));
+    let msg = `Imported ${f.name} (${rep.format}): ${rep.created.length} created`;
+    if(rep.existing.length) msg += `, ${rep.existing.length} already existed`;
+    if(rep.skipped.length)  msg += `, ${rep.skipped.length} skipped`;
+    if(rep.failed.length)   msg += `, ${rep.failed.length} FAILED`;
+    if(rep.media_uploaded)  msg += `, ${rep.media_uploaded} media file(s)`;
+    msg += ".";
+    if(rep.failed.length || rep.skipped.length){
+      const lines = rep.failed.concat(rep.skipped).slice(0,6)
+        .map(d=>`• ${d.product_code||d.name||"(unidentified)"} — ${d.reason}`);
+      await confirmDialog(msg+"\n\n"+lines.join("\n"));
+    } else toast(msg);
+    refresh();
+  }catch(e){ toast("Import failed: "+e.message); }
+}
+const CATALOG_IMPORT_CONTROL = `
+  <input type="file" id="catimport" style="display:none"
+         accept=".zip,.p21,.stp,.step,.xml,.csv" onchange="importCatalogFile(this)">
+  <button class="mini create" onclick="document.getElementById('catimport').click()">Import manufacturer file&hellip;</button>`;
+
 function renderCatalog(){
   if(state.catalogSel) return renderCatalogDetail();
-  if(!state.catalogs.length) return `<div class="empty">No catalog records yet.<br><span class="muted">Author them with the loobric CLI (create-catalog-record) or an importer (loobric import).</span></div>`;
-  const explain = `<div class="explain">Published catalog specs &mdash; nominal, <b>asserted</b> data. Open one to see every field beside the <b>source</b> that vouches for it, so a manufacturer's claim reads differently from a real measurement.</div>`;
-  return explain + state.catalogs.map(c=>{
+  const header = `<div class="card"><div class="row">
+      <strong>Catalog records</strong>${CATALOG_IMPORT_CONTROL}</div>
+    <div class="explain" style="margin-top:.6rem">Published catalog specs &mdash;
+      nominal, <b>asserted</b> data. Import a manufacturer's downloaded file
+      (GTC zip, STEP P21, DIN 4000, SolidCAM, hyperMILL) or author records with
+      the CLI. Open one to see every field beside the <b>source</b> that vouches
+      for it, so a manufacturer's claim reads differently from a real
+      measurement.</div></div>`;
+  if(!state.catalogs.length) return header + `<div class="empty">No catalog records yet.</div>`;
+  return header + state.catalogs.map(c=>{
     const name=cf(c,"name"), mfr=cf(c,"manufacturer"), pc=cf(c,"product_code");
     return `<div class="card">
       <div class="row"><strong class="link-ish" onclick="openCatalog('${rid(c)}')">${esc(name||"(unnamed)")}</strong>

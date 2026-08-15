@@ -3,7 +3,7 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
-## [Unreleased]
+## [0.12.0] — 2026-08-15
 
 ### Changed
 - **`thermal-4x6-wide` is now 57×32mm, 4-up** (was 50×25mm, 6-up): the

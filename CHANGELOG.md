@@ -3,6 +3,43 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.11.0] — 2026-08-15
+
+### Added
+- **Spec labels** (`docs/SPEC_LABELS.md`; grilled & ratified 2026-08-15) —
+  printed spec plates for at-the-toolbox identification: a spec label is a
+  *rendering of a record* (not a Label; the QR is one optional element).
+  `POST /api/v1/spec-labels/sheet` (read door — printing never mints)
+  renders owned instance records with two canned templates (`qr-specs`,
+  `spec-plaque`) on the existing sticker stocks plus three provisional
+  plaque stocks, or exports the resolved print data as JSON/CSV for
+  bring-your-own-layout printing. Values are the merged view (measured
+  wins over nominal, differences marked `*`), T# is the bound entry's
+  snapshot, and the tool image is a silhouette derived from geometry.
+  Unlabeled records under a QR template are a 400 naming the ids; a
+  record's newest label prints by default, overridable per record. The
+  Web UI Tools tab grows a "Print spec labels" bar (multi-select,
+  template + stock, inline label-these-first prompt). Ratified printed
+  vocabulary (DIA/FL/LOC/OAL/T#/Ø/`*`, `length` = OAL,
+  `cutting_edge_height` = LOC) added to `UBIQUITOUS_LANGUAGE.md`.
+- **`thermal-4x6-wide` stock** — the 4″×6″ thermal sheet cut as a single
+  column of six 50×25mm labels (the plaque-50x25 footprint), with cut
+  guides including the grid outline. Available to both `/labels/sheet`
+  and `/spec-labels/sheet`.
+
+### Removed
+- **Legacy `/api/v1/tool-presets` and `/api/v1/tool-usage` routers, ORM
+  models, and tables** (first REBOOT R6 slice). Both were retiring v1
+  substrate, already hidden from the OpenAPI contract. The v1 ToolPreset
+  was machine/pocket/offset "setup data" — a tool-*location* concept
+  superseded by ToolTableEntry and setups — and squatted on the "preset"
+  vocabulary reserved for the M3 feeds-and-speeds record; ToolUsage hung
+  off it by FK and is superseded by the usage ledger (TOOL_SCHEMA.md
+  §7.8). Migration 0006 drops both tables; v1 rows are pre-facade data
+  and are deliberately not migrated. The remaining legacy routers
+  (`/tool-items`, `/tool-assemblies`, `/tool-instances`) still await the
+  rest of R6.
+
 ## [0.10.0] — 2026-08-05
 
 ### Added

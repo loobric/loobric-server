@@ -22,6 +22,7 @@ Assumptions:
   dimensions from the users who asked); changing them is not an event.
 """
 from io import BytesIO
+from math import radians, tan
 
 from reportlab.lib.units import inch, mm
 from reportlab.pdfgen import canvas
@@ -69,7 +70,7 @@ _PAD = 4  # pt
 # ---------------------------------------------------------------------------
 
 GEOMETRY_KEYS = ("diameter", "flutes", "cutting_edge_height", "length",
-                 "shank_diameter", "shape")
+                 "shank_diameter", "shape", "included_angle", "tip_diameter")
 
 
 def _leaf_value(canonical, path):
@@ -103,7 +104,9 @@ def resolve_spec(instance_canonical, catalog_canonical=None) -> dict:
         if measured is not None and nominal is not None \
                 and _differs(measured, nominal):
             marked.append(key)
-        unit = unit or m_unit or n_unit
+        # The angle's `deg` must never become the line's (in)/(mm) suffix.
+        if key != "included_angle":
+            unit = unit or m_unit or n_unit
     name, _ = _leaf_value(instance_canonical, "name")
     if name is None:
         name, _ = _leaf_value(catalog_canonical, "name")
@@ -139,9 +142,20 @@ def _value(item, key):
 
 def spec_line(item, include_unit=True, compact=False) -> str:
     """`Ø5.92* · 4FL · LOC 19 · OAL 63  (mm)` — the one-line spec string.
-    compact=True tightens separators for the smallest stock."""
+    A pointed tool spec'd by angle instead of diameter leads with the angle
+    (`60° · tip 0.005 · …`) — its cutting diameter is a function of depth,
+    not a property of the tool. compact=True tightens separators for the
+    smallest stock."""
     geometry = item["geometry"]
-    parts = ["Ø%s" % _value(item, "diameter")]
+    parts = []
+    if geometry.get("diameter") is not None \
+            or geometry.get("included_angle") is None:
+        parts.append("Ø%s" % _value(item, "diameter"))
+    if geometry.get("included_angle") is not None:
+        parts.append("%s°" % _value(item, "included_angle"))
+        if geometry.get("tip_diameter") is not None \
+                and geometry.get("diameter") is None:
+            parts.append("tip %s" % _value(item, "tip_diameter"))
     if geometry.get("flutes") is not None:
         parts.append("%sFL" % _value(item, "flutes"))
     if geometry.get("cutting_edge_height") is not None:
@@ -169,6 +183,17 @@ def _draw_silhouette(c, item, x, y, box_w, box_h):
     geometry = item["geometry"]
     oal = geometry.get("length")
     dia = geometry.get("diameter")
+    angle = geometry.get("included_angle")
+    tip = geometry.get("tip_diameter") or 0
+    # Angle-spec'd pointed tool (engraver, chamfer): no stored diameter,
+    # but the top-of-grind diameter follows from tip + angle over an
+    # EXPLICIT LOC (never the 30%-of-OAL guess), capped at the shank the
+    # flank is ground into.
+    if not dia and angle and geometry.get("cutting_edge_height"):
+        dia = tip + 2 * geometry["cutting_edge_height"] \
+            * tan(radians(angle / 2.0))
+        if geometry.get("shank_diameter"):
+            dia = min(dia, geometry["shank_diameter"])
     if not oal or not dia:
         return
     shape = geometry.get("shape")
@@ -252,6 +277,17 @@ def _draw_silhouette(c, item, x, y, box_w, box_h):
     elif shape == "slittingsaw":
         # Thin blade disc on the end of the arbor.
         c.rect(fx, cy - flute_h / 2, flute_len, flute_h, stroke=1, fill=1)
+    elif angle and geometry.get("cutting_edge_height"):
+        # True-angle taper: full width at the top of the grind narrowing
+        # to the tip flat (a point when tip_diameter is absent/zero).
+        tip_h = tip * scale
+        p = c.beginPath()
+        p.moveTo(fx, cy - flute_h / 2)
+        p.lineTo(fx + flute_len, cy - tip_h / 2)
+        p.lineTo(fx + flute_len, cy + tip_h / 2)
+        p.lineTo(fx, cy + flute_h / 2)
+        p.close()
+        c.drawPath(p, stroke=1, fill=1)
     elif shape in _POINTED_SHAPES and flute_len > flute_h / 2:
         p = c.beginPath()
         p.moveTo(fx, cy - flute_h / 2)
@@ -334,12 +370,19 @@ def _paint_qr_specs_roomy(c, stock, position, item):
         c.drawString(tx, y + h - 8 * mm,
                      _truncate(c, item["manufacturer"], "Helvetica", 6, tw))
     ry = y + h - 12.5 * mm
-    for abbrev, key in (("DIA", "diameter"), ("FL", "flutes"),
-                        ("LOC", "cutting_edge_height"), ("OAL", "length")):
+    rows = [("DIA", "diameter"), ("FL", "flutes"),
+            ("LOC", "cutting_edge_height"), ("OAL", "length")]
+    if item["geometry"].get("diameter") is None \
+            and item["geometry"].get("included_angle") is not None:
+        rows[0] = ("ANG", "included_angle")
+    for abbrev, key in rows:
         c.setFont("Helvetica", 6.5)
         c.drawString(tx, ry, abbrev)
         c.setFont("Helvetica-Bold", 7)
-        c.drawString(tx + 8 * mm, ry, _value(item, key))
+        text = _value(item, key)
+        if key == "included_angle":
+            text += "°"
+        c.drawString(tx + 8 * mm, ry, text)
         ry -= 3.2 * mm
     if item.get("unit"):
         c.setFont("Helvetica", 5.5)
@@ -427,7 +470,8 @@ def render_spec_sheet(items, template: str, stock_name: str,
 
 EXPORT_COLUMNS = ("record_id", "name", "manufacturer", "code", "url",
                   "tool_number", "unit", "diameter", "flutes", "loc", "oal",
-                  "shank_diameter", "shape", "marked", "spec_line")
+                  "shank_diameter", "included_angle", "tip_diameter", "shape",
+                  "marked", "spec_line")
 
 
 def export_rows(items) -> list[dict]:
@@ -449,6 +493,8 @@ def export_rows(items) -> list[dict]:
             "loc": geometry.get("cutting_edge_height"),
             "oal": geometry.get("length"),
             "shank_diameter": geometry.get("shank_diameter"),
+            "included_angle": geometry.get("included_angle"),
+            "tip_diameter": geometry.get("tip_diameter"),
             "shape": geometry.get("shape"),
             "marked": ",".join(item.get("marked", [])),
             "spec_line": spec_line(item),

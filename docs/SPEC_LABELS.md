@@ -53,8 +53,15 @@ catalog type:
   reverse taper (`dovetail`), stylus + ball (`probe`), blade-on-arbor
   (`slittingsaw`); probes and saws skip the flute-line hatching, and
   their missing shank/LOC values get shape-appropriate defaults instead
-  of the endmill guesses. Stored media is never parsed or embedded
-  (deferred; see below).
+  of the endmill guesses. An **angle-spec'd pointed tool** (engraver,
+  chamfer: `included_angle` + `tip_diameter`, no stored diameter — its
+  cutting diameter is a function of depth) draws a true-angle taper to
+  the tip flat, deriving the top-of-grind diameter from
+  `tip + 2·LOC·tan(angle/2)` (explicit LOC required, capped at the
+  shank); the spec line leads `60° · tip 0.005` instead of `Ø`, and the
+  roomy table's DIA row becomes ANG. The derivation is presentation
+  only — no canonical `diameter` is ever invented. Stored media is
+  never parsed or embedded (deferred; see below).
 - **Units:** decimal as stored, `(in)`/`(mm)` suffix where space allows
   (the smallest plaque drops it — at 5.5 pt the full spec line only fits
   compacted). No conversion, no fractions.

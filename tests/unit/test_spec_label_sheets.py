@@ -85,6 +85,73 @@ class TestResolveSpec:
         assert resolve_spec(_instance_canonical(diameter=6.0))["unit"] == "mm"
 
 
+def _engraver_item(**overrides):
+    """Harvey-993230-shaped: angle-spec'd, no stored diameter."""
+    canonical = {"name": _field("60deg engraver"),
+                 "geometry": {
+                     "shape": _field("engraver"),
+                     "included_angle": {"value": 60, "unit": "deg",
+                                        "source": "asserted:test"},
+                     "tip_diameter": {"value": 0.005, "unit": "in",
+                                      "source": "asserted:test"},
+                     "shank_diameter": {"value": 0.125, "unit": "in",
+                                        "source": "asserted:test"},
+                     "cutting_edge_height": {"value": 0.107, "unit": "in",
+                                             "source": "asserted:test"},
+                     "length": {"value": 1.5, "unit": "in",
+                                "source": "asserted:test"},
+                     "flutes": _field(2)}}
+    item = resolve_spec(canonical)
+    item.update({"record_id": "r-e", "tool_number": None,
+                 "code": "B7C1D9E3", "url": "https://x/t/B7C1D9E3"})
+    item.update(overrides)
+    return item
+
+
+class TestAngleSpecTools:
+    def test_angle_keys_reach_the_merged_view(self):
+        item = _engraver_item()
+        assert item["geometry"]["included_angle"] == 60
+        assert item["geometry"]["tip_diameter"] == 0.005
+
+    def test_deg_never_becomes_the_unit_suffix(self):
+        assert _engraver_item()["unit"] == "in"
+
+    def test_spec_line_leads_with_angle_not_dia(self):
+        line = spec_line(_engraver_item())
+        assert line.startswith("60° · tip 0.005")
+        assert "Ø" not in line
+        assert line.endswith("(in)")
+
+    def test_diameter_still_leads_when_present(self):
+        # A chamfer mill with a real diameter keeps the Ø lead and gains
+        # the angle; the tip only replaces a MISSING diameter.
+        item = _item()
+        item["geometry"]["included_angle"] = 90
+        line = spec_line(item)
+        assert line.startswith("Ø6 · 90°")
+        assert "tip" not in line
+
+    def test_silhouette_renders_from_angle_without_diameter(self):
+        assert render_spec_sheet(
+            [_engraver_item()], "qr-specs", "thermal-57x32"
+        ).startswith(b"%PDF")
+
+    def test_no_derivation_without_explicit_loc(self):
+        # Missing LOC → no derived diameter → the silhouette floor holds
+        # (renders fine, just without a profile).
+        item = _engraver_item()
+        del item["geometry"]["cutting_edge_height"]
+        assert render_spec_sheet(
+            [item], "spec-plaque", "plaque-50x25").startswith(b"%PDF")
+
+    def test_export_carries_angle_and_tip(self):
+        (row,) = export_rows([_engraver_item()])
+        assert row["included_angle"] == 60
+        assert row["tip_diameter"] == 0.005
+        assert row["diameter"] is None
+
+
 class TestSpecLine:
     def test_full_line(self):
         assert spec_line(_item()) == "Ø6 · 4FL · LOC 19 · OAL 63  (mm)"

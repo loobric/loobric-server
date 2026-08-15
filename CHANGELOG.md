@@ -3,6 +3,19 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [Unreleased]
+
+### Added
+- **Angle-aware spec labels for pointed tools** (#50): the merged view now
+  carries `geometry.included_angle` and `geometry.tip_diameter`. A tool
+  spec'd by angle rather than diameter (engraver, chamfer — cutting
+  diameter is a function of depth) prints `60° · tip 0.005` instead of a
+  misleading `Ø—`, swaps the roomy table's DIA row for ANG, and draws a
+  true-angle taper silhouette by deriving the top-of-grind diameter
+  (`tip + 2·LOC·tan(angle/2)`, explicit LOC required, capped at the
+  shank — presentation only, no canonical diameter is invented).
+  JSON/CSV exports gain both columns; ANG/tip/° join the ratified
+  printed vocabulary.
 ## [0.12.0] — 2026-08-15
 
 ### Changed

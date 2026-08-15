@@ -52,6 +52,18 @@ STOCKS = {
         "pitch_x": 1.9 * inch, "pitch_y": 0.95 * inch,
         "cut_lines": True,
     },
+    # The same 4x6" stock cut into a single column of wider 50x25mm labels
+    # (the plaque-50x25 footprint, 6-up). The column sits at the left edge,
+    # so `cut_border` draws the grid outline too — the right-edge cut has
+    # no neighboring cell to imply it.
+    "thermal-4x6-wide": {
+        "page": (4 * inch, 6 * inch),
+        "columns": 1, "rows": 6,
+        "cell_width": 50 * mm, "cell_height": 25 * mm,
+        "margin_left": 2 * mm, "margin_top": 1.2 * mm,
+        "pitch_x": 50 * mm, "pitch_y": 25 * mm,
+        "cut_lines": True, "cut_border": True,
+    },
 }
 
 _PAD = 4  # inner cell padding, pt
@@ -117,6 +129,10 @@ def _draw_cut_lines(c: canvas.Canvas, stock: dict):
     for j in range(1, stock["rows"]):
         y = top - j * stock["pitch_y"]
         c.line(left, y, right, y)
+    # Grid outline for stocks whose outer cuts have no neighboring cell to
+    # imply them (e.g. a single column on a wider sheet).
+    if stock.get("cut_border"):
+        c.rect(left, bottom, right - left, top - bottom, stroke=1, fill=0)
 
 
 def render_sheet(labels, stock_name: str, start_at: int = 0) -> bytes:

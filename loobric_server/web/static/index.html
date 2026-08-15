@@ -292,7 +292,7 @@ const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"]
 let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, toolSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
               machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{},
               activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[],
-              labels:[] };
+              labels:[], printSel:{} };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -618,9 +618,10 @@ async function apiPdf(path, body){
 // Sticker stocks the sheet endpoint knows; the picker on the Labels tab
 // remembers the shop's printer for both minting and reprints.
 const LABEL_STOCKS = {
-  "avery-5160":   {label:"Avery 5160 sheet (30-up)",        per:30},
-  "thermal-4x6":  {label:'4"x6" thermal label (12, cut apart)', per:12},
-  "thermal-57x32":{label:"57x32 mm thermal roll (1/label)",  per:1},
+  "avery-5160":       {label:"Avery 5160 sheet (30-up)",        per:30},
+  "thermal-4x6":      {label:'4"x6" thermal label (12, cut apart)', per:12},
+  "thermal-4x6-wide": {label:'4"x6" thermal, wide 50x25 (6, cut apart)', per:6},
+  "thermal-57x32":    {label:"57x32 mm thermal roll (1/label)",  per:1},
 };
 // Picking a stock and pressing Print mints one full sheet, no questions;
 // "Custom count…" is the one choice that asks (and prints on the last
@@ -684,6 +685,55 @@ function labelChips(t){
     <button class="mini link" onclick="labelTool('${rid(t)}')">Add label</button></div>`;
 }
 
+// ---- Spec labels (printed spec plates; docs/SPEC_LABELS.md) -----------------
+// A spec label is a printed RENDERING of a record — specs in ink for
+// at-the-toolbox identification — not a Label. Everything printed is a
+// snapshot at print time; the QR (qr-specs template) stays late-bound.
+const SPEC_TEMPLATES = {
+  "qr-specs":    "QR + specs",
+  "spec-plaque": "Spec plaque (no QR)",
+};
+const SPEC_STOCKS = {
+  "avery-5160":       "Avery 5160 sheet (30-up)",
+  "thermal-4x6":      '4"x6" thermal label (12, cut apart)',
+  "thermal-4x6-wide": '4"x6" thermal, wide 50x25 (6, cut apart)',
+  "thermal-57x32":    "57x32 mm thermal roll",
+  "plaque-38x19":     "38x19 mm plaque",
+  "plaque-50x25":     "50x25 mm plaque",
+  "plaque-25x25":     "25x25 mm plaque",
+};
+let specTemplate = "qr-specs", specStock = "avery-5160";
+function togglePrintSel(id){
+  if(state.printSel[id]) delete state.printSel[id]; else state.printSel[id]=true;
+  render(); }
+function printSelCount(){ return Object.keys(state.printSel).length; }
+async function printSpecLabels(){
+  const ids = Object.keys(state.printSel);
+  if(!ids.length){ toast("Select tools to print first."); return; }
+  const r = await fetch("/api/v1/spec-labels/sheet", {method:"POST",
+    credentials:"same-origin", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({record_ids:ids, template:specTemplate, stock:specStock})});
+  if(r.ok){
+    const url = URL.createObjectURL(await r.blob());
+    window.open(url, "_blank");
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+    toast("Print at 100% scale. Printed specs are a snapshot — reprint after a regrind or rebind.");
+    return;
+  }
+  const d = await r.json().catch(()=>({}));
+  const unlabeled = d.detail && d.detail.unlabeled_record_ids;
+  if(r.status===400 && unlabeled){
+    // Printing never mints — but the user can, explicitly, right here.
+    if(await confirmDialog(unlabeled.length+" selected tool(s) have no label yet, and this layout prints a QR. Create labels for them now?")){
+      try{ for(const rid of unlabeled) await api("POST","/labels",{entity_id:rid});
+           refresh(); await printSpecLabels(); }
+      catch(e){ toast(e.message); }
+    }
+    return;
+  }
+  toast((d.detail && d.detail.message) || d.detail || ("HTTP "+r.status));
+}
+
 // ---- Retire (ratified status value; assert-only, judgment not measurement) --
 function isRetired(id){ const t=state.tools.find(x=>rid(x)===id); return !!t && cf(t,"status")==="retired"; }
 async function retireTool(id){ const t=state.tools.find(x=>rid(x)===id);
@@ -711,12 +761,32 @@ function renderTools(){
   if(state.toolSel) return renderToolDetail();
   if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
   const boundAt=_boundAtMap();
+  const nSel=printSelCount();
+  const specBar = `<div class="card">
+    <div class="row"><strong>Print spec labels</strong>
+      <span class="rowact">
+        <select class="picker" onchange="specTemplate=this.value">${
+          Object.entries(SPEC_TEMPLATES).map(([v,l])=>
+            `<option value="${v}" ${specTemplate===v?"selected":""}>${esc(l)}</option>`).join("")}</select>
+        <select class="picker" onchange="specStock=this.value">${
+          Object.entries(SPEC_STOCKS).map(([v,l])=>
+            `<option value="${v}" ${specStock===v?"selected":""}>${esc(l)}</option>`).join("")}</select>
+        <button class="mini create" onclick="printSpecLabels()" ${nSel?"":"disabled"}>Print${nSel?" "+nSel:""}&hellip;</button>
+      </span></div>
+    <div class="explain" style="margin-top:.6rem">Specs in ink (&#x2300;, FL, LOC, OAL,
+      T#, silhouette) for tools you identify by reading, not scanning. Check tools
+      below, pick a layout and stock, print at 100% scale. Printed values are a
+      snapshot &mdash; reprint after a regrind or rebind; a QR on the label always
+      scans to current truth.</div>
+  </div>`;
   const rows = state.tools.map(t=>{
     const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), hours=cf(t,"usage.hours");
     const retired=cf(t,"status")==="retired", where=(boundAt[rid(t)]||[]);
     const nlbl=labelsFor(rid(t)).length;
     return `<div class="trow">
       <span class="tinfo">
+        <input type="checkbox" ${state.printSel[rid(t)]?"checked":""}
+          onclick="togglePrintSel('${rid(t)}')" title="select for spec-label printing">
         <strong class="link-ish" onclick="openTool('${rid(t)}')">${esc(cf(t,"name")||"(unnamed)")}</strong>
         <span class="muted">${shape?esc(shape):""}${dia!=null?" &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h":""}</span>
         ${retired?'<span class="pill unbound">retired</span>':""}
@@ -725,7 +795,7 @@ function renderTools(){
       </span>
     </div>`;
   }).join("");
-  return `<div class="card">${rows}</div>`;
+  return specBar + `<div class="card">${rows}</div>`;
 }
 
 function renderToolDetail(){

@@ -297,6 +297,13 @@ let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, m
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// A value that IS a URL (source_url and friends) renders as a real link in a
+// new tab; anything else stays escaped text. Whole-value match only — no
+// in-text linkification.
+const isHttpUrl = (v) => typeof v === "string" && /^https?:\/\/\S+$/.test(v);
+const linkify = (v) => isHttpUrl(v)
+  ? `<a href="${esc(v)}" target="_blank" rel="noopener noreferrer">${esc(v)}</a>`
+  : esc(v);
 function toast(msg){ const t=$("#toast"); t.textContent=msg; t.style.opacity=1; setTimeout(()=>t.style.opacity=0,2600); }
 
 // In-page confirm/prompt (native dialogs can be permanently suppressed).
@@ -1267,7 +1274,7 @@ function catalogField(label, leaf){
   const isUnknown = !leaf || leaf.value == null || kind === "unknown";
   const val = isUnknown
     ? `<span class="unknownval">unknown</span>`
-    : esc(leaf.value) + (leaf.unit ? ` <span class="muted">${esc(leaf.unit)}</span>` : "");
+    : linkify(leaf.value) + (leaf.unit ? ` <span class="muted">${esc(leaf.unit)}</span>` : "");
   return `<div class="frow"><span class="flabel">${esc(label)}</span>`+
          `<span class="fval">${val}</span>${provBadge(src)}</div>`;
 }
@@ -1282,7 +1289,7 @@ function clientSections(rec){
     const sec = cls[n] || {}; const data = sec.data || {};
     const rows = Object.entries(data).map(([k,v])=>
       `<div class="frow"><span class="flabel">${esc(k.replace(/_/g," "))}</span>`+
-      `<span style="word-break:break-all;text-align:right">${esc(typeof v==="object"?JSON.stringify(v):String(v))}</span></div>`).join("");
+      `<span style="word-break:break-all;text-align:right">${typeof v==="object"?esc(JSON.stringify(v)):linkify(String(v))}</span></div>`).join("");
     const ver = sec.client_version ? ` <span class="muted">v${esc(sec.client_version)}</span>` : "";
     return `<div style="margin-top:.4rem"><div class="muted"><b>${esc(n)}</b>${ver}</div>`+
            (rows || `<div class="muted" style="padding:.45rem 0">no data</div>`)+`</div>`;

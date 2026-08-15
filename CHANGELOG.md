@@ -16,6 +16,10 @@ All notable changes to **loobric-server** are recorded here. This project adhere
   shank — presentation only, no canonical diameter is invented).
   JSON/CSV exports gain both columns; ANG/tip/° join the ratified
   printed vocabulary.
+- **Web UI: URL values render as hyperlinks** (#51): a canonical leaf or
+  client-data value that is a whole http(s) URL (e.g. a catalog record's
+  `source_url`) is now a clickable link opening in a new tab.
+
 ## [0.12.0] — 2026-08-15
 
 ### Changed

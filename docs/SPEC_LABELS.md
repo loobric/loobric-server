@@ -47,8 +47,14 @@ catalog type:
 - **Silhouette:** the tool image is a vector side profile **derived from
   geometry** (`shape`, DIA, OAL, LOC, shank DIA) — honestly scaled, crisp
   on 1-bit thermal stock, zero dependencies. Needs at least DIA + OAL;
-  unknown shapes draw a plain profile. Stored media is never parsed or
-  embedded (deferred; see below).
+  unknown shapes draw a plain profile. Recognized shape families: round
+  tip (`ballend`), rounded corners (`bullnose`), pointed (`chamfer`,
+  `vbit`, `drill`, `spotdrill`, `countersink`, `engraver`, `tap`),
+  reverse taper (`dovetail`), stylus + ball (`probe`), blade-on-arbor
+  (`slittingsaw`); probes and saws skip the flute-line hatching, and
+  their missing shank/LOC values get shape-appropriate defaults instead
+  of the endmill guesses. Stored media is never parsed or embedded
+  (deferred; see below).
 - **Units:** decimal as stored, `(in)`/`(mm)` suffix where space allows
   (the smallest plaque drops it — at 5.5 pt the full spec line only fits
   compacted). No conversion, no fractions.
@@ -75,7 +81,7 @@ Stocks are the LABELS.md registry plus a small canned plaque set:
 |---|---|---|
 | `avery-5160` | 30-up US Letter | compact cell |
 | `thermal-4x6` | 12-up cut-apart | compact cell |
-| `thermal-4x6-wide` | 6-up cut-apart, single column of 50×25 mm | compact cell (plaque template gives the silhouette) |
+| `thermal-4x6-wide` | 4-up cut-apart, single column of 57×32 mm | roomy cell (spec table + silhouette, same as the 57×32 roll) |
 | `thermal-57x32` | 57×32 mm roll | roomy cell |
 | `plaque-38x19` | 38×19 mm, one per page | plaque |
 | `plaque-50x25` | 50×25 mm, one per page | plaque |

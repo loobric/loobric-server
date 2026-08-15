@@ -158,14 +158,36 @@ def spec_line(item, include_unit=True, compact=False) -> str:
 # Derived silhouette: side profile, shank left, cutting edge right.
 # ---------------------------------------------------------------------------
 
+# Pointed tips share one profile; probes and saws are not fluted cutters,
+# so they never get the diagonal flute-line hatching.
+_POINTED_SHAPES = ("chamfer", "vbit", "drill", "spotdrill", "countersink",
+                   "engraver", "tap")
+_NO_FLUTE_LINES = ("probe", "slittingsaw")
+
+
 def _draw_silhouette(c, item, x, y, box_w, box_h):
     geometry = item["geometry"]
     oal = geometry.get("length")
     dia = geometry.get("diameter")
     if not oal or not dia:
         return
+    shape = geometry.get("shape")
     loc = geometry.get("cutting_edge_height") or oal * 0.3
-    shank_d = geometry.get("shank_diameter") or dia
+    shank_d = geometry.get("shank_diameter")
+    if shank_d is None:
+        # DIA is the ball tip on a probe and the blade on a saw — neither is
+        # a sane stand-in for the body it hangs off.
+        if shape == "probe":
+            shank_d = max(dia * 2, oal * 0.12)
+        elif shape == "slittingsaw":
+            shank_d = dia * 0.25
+        else:
+            shank_d = dia
+    if shape == "slittingsaw":
+        # LOC on a saw (if recorded at all) is blade thickness, not a flute
+        # length; an absent one must not default to the 30%-of-OAL guess.
+        loc = geometry.get("cutting_edge_height") or dia * 0.08
+        loc = min(loc, oal * 0.5)
     scale = min(box_w / oal, box_h / max(dia, shank_d))
     cy = y + box_h / 2.0
     x0 = x + (box_w - oal * scale) / 2.0
@@ -176,11 +198,22 @@ def _draw_silhouette(c, item, x, y, box_w, box_h):
     c.setLineWidth(0.4)
     c.setStrokeColorRGB(0.15, 0.15, 0.15)
     c.setFillColorRGB(0.85, 0.85, 0.85)
+    if shape == "probe":
+        # Body, thin stylus shaft, ball tip.
+        body_len = shank_len * 0.55
+        c.rect(x0, cy - shank_h / 2, body_len, shank_h, stroke=1, fill=1)
+        r = flute_h / 2.0
+        shaft_h = max(flute_h * 0.35, 0.6)
+        c.rect(x0 + body_len, cy - shaft_h / 2,
+               oal * scale - body_len - r, shaft_h, stroke=1, fill=1)
+        c.setFillColorRGB(0.55, 0.55, 0.55)
+        c.circle(x0 + oal * scale - r, cy, r, stroke=1, fill=1)
+        c.restoreState()
+        return
     c.rect(x0, cy - shank_h / 2, shank_len, shank_h, stroke=1, fill=1)
 
     fx = x0 + shank_len
     c.setFillColorRGB(0.55, 0.55, 0.55)
-    shape = item["geometry"].get("shape")
     if shape == "ballend" and flute_len > flute_h / 2:
         r = flute_h / 2.0
         p = c.beginPath()
@@ -191,8 +224,35 @@ def _draw_silhouette(c, item, x, y, box_w, box_h):
         p.lineTo(fx, cy + r)
         p.close()
         c.drawPath(p, stroke=1, fill=1)
-    elif shape in ("chamfer", "vbit", "drill", "spotdrill") \
-            and flute_len > flute_h / 2:
+    elif shape == "bullnose" and flute_len > flute_h / 4:
+        r = flute_h / 4.0
+        p = c.beginPath()
+        p.moveTo(fx, cy - flute_h / 2)
+        p.lineTo(fx + flute_len - r, cy - flute_h / 2)
+        p.arcTo(fx + flute_len - 2 * r, cy - flute_h / 2,
+                fx + flute_len, cy - flute_h / 2 + 2 * r,
+                startAng=270, extent=90)
+        p.lineTo(fx + flute_len, cy + flute_h / 2 - r)
+        p.arcTo(fx + flute_len - 2 * r, cy + flute_h / 2 - 2 * r,
+                fx + flute_len, cy + flute_h / 2,
+                startAng=0, extent=90)
+        p.lineTo(fx, cy + flute_h / 2)
+        p.close()
+        c.drawPath(p, stroke=1, fill=1)
+    elif shape == "dovetail":
+        # Reverse taper: neck at the shank flaring to full DIA at the tip.
+        neck_h = min(shank_h, flute_h * 0.5)
+        p = c.beginPath()
+        p.moveTo(fx, cy - neck_h / 2)
+        p.lineTo(fx + flute_len, cy - flute_h / 2)
+        p.lineTo(fx + flute_len, cy + flute_h / 2)
+        p.lineTo(fx, cy + neck_h / 2)
+        p.close()
+        c.drawPath(p, stroke=1, fill=1)
+    elif shape == "slittingsaw":
+        # Thin blade disc on the end of the arbor.
+        c.rect(fx, cy - flute_h / 2, flute_len, flute_h, stroke=1, fill=1)
+    elif shape in _POINTED_SHAPES and flute_len > flute_h / 2:
         p = c.beginPath()
         p.moveTo(fx, cy - flute_h / 2)
         p.lineTo(fx + flute_len - flute_h / 2, cy - flute_h / 2)
@@ -204,15 +264,16 @@ def _draw_silhouette(c, item, x, y, box_w, box_h):
     else:  # square endmill and anything unrecognized: plain profile
         c.rect(fx, cy - flute_h / 2, flute_len, flute_h, stroke=1, fill=1)
 
-    c.setStrokeColorRGB(0.95, 0.95, 0.95)
-    c.setLineWidth(0.5)
-    flutes = geometry.get("flutes")
-    n = int(flutes) if isinstance(flutes, (int, float)) and flutes else 2
-    body = flute_len * (0.85 if shape == "ballend" else 1.0)
-    for i in range(1, n + 1):
-        lx = fx + body * i / (n + 1)
-        c.line(lx, cy - flute_h / 2 + 0.6, lx + flute_h * 0.5,
-               cy + flute_h / 2 - 0.6)
+    if shape not in _NO_FLUTE_LINES:
+        c.setStrokeColorRGB(0.95, 0.95, 0.95)
+        c.setLineWidth(0.5)
+        flutes = geometry.get("flutes")
+        n = int(flutes) if isinstance(flutes, (int, float)) and flutes else 2
+        body = flute_len * (0.85 if shape == "ballend" else 1.0)
+        for i in range(1, n + 1):
+            lx = fx + body * i / (n + 1)
+            c.line(lx, cy - flute_h / 2 + 0.6, lx + flute_h * 0.5,
+                   cy + flute_h / 2 - 0.6)
     c.restoreState()
 
 

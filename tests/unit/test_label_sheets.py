@@ -33,9 +33,9 @@ class TestRender:
         assert _page_count(render_sheet(_labels(12), "thermal-4x6")) == 1
         assert _page_count(render_sheet(_labels(13), "thermal-4x6")) == 2
 
-    def test_thermal_4x6_wide_is_6_up(self):
-        assert _page_count(render_sheet(_labels(6), "thermal-4x6-wide")) == 1
-        assert _page_count(render_sheet(_labels(7), "thermal-4x6-wide")) == 2
+    def test_thermal_4x6_wide_is_4_up(self):
+        assert _page_count(render_sheet(_labels(4), "thermal-4x6-wide")) == 1
+        assert _page_count(render_sheet(_labels(5), "thermal-4x6-wide")) == 2
 
     def test_start_at_reduces_first_page_capacity(self):
         # 25 labels from position 10 on a 30-up sheet → 20 fit, 5 spill.

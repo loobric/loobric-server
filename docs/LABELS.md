@@ -99,7 +99,7 @@ Label lifecycle (founder decisions, 2026-08-04):
 |---|---|---|
 | `avery-5160` | 30-up US Letter address sheets (and compatibles) | 3 × 10, 2⅝″ × 1″ |
 | `thermal-4x6` | 4″ × 6″ adhesive shipping labels (thermal) | 12-up, 2 × 6 of 2″ × 1″, faint cut guides — cut apart |
-| `thermal-4x6-wide` | the same 4″ × 6″ stock, wider cut | 6-up, single column of 50 × 25 mm (the plaque-50x25 footprint), cut guides incl. outline |
+| `thermal-4x6-wide` | the same 4″ × 6″ stock, wider cut | 4-up, single column of 57 × 32 mm (the thermal-57x32 roll footprint), cut guides incl. outline |
 | `thermal-57x32` | 57 × 32 mm thermal rolls | one label per page |
 
 Body: `{"count": N}` (mint and print blanks) **or** `{"label_ids": [...]}`

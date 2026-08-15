@@ -52,16 +52,17 @@ STOCKS = {
         "pitch_x": 1.9 * inch, "pitch_y": 0.95 * inch,
         "cut_lines": True,
     },
-    # The same 4x6" stock cut into a single column of wider 50x25mm labels
-    # (the plaque-50x25 footprint, 6-up). The column sits at the left edge,
-    # so `cut_border` draws the grid outline too — the right-edge cut has
-    # no neighboring cell to imply it.
+    # The same 4x6" stock cut into a single column of wider 57x32mm labels
+    # (the thermal-57x32 roll footprint, 4-up) — tall enough for the roomy
+    # spec layout with the silhouette. The column sits at the left edge, so
+    # `cut_border` draws the grid outline too — the right-edge cut has no
+    # neighboring cell to imply it.
     "thermal-4x6-wide": {
         "page": (4 * inch, 6 * inch),
-        "columns": 1, "rows": 6,
-        "cell_width": 50 * mm, "cell_height": 25 * mm,
-        "margin_left": 2 * mm, "margin_top": 1.2 * mm,
-        "pitch_x": 50 * mm, "pitch_y": 25 * mm,
+        "columns": 1, "rows": 4,
+        "cell_width": 57 * mm, "cell_height": 32 * mm,
+        "margin_left": 2 * mm, "margin_top": 2 * mm,
+        "pitch_x": 57 * mm, "pitch_y": 32 * mm,
         "cut_lines": True, "cut_border": True,
     },
 }

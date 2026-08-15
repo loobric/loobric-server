@@ -149,6 +149,36 @@ class TestRender:
             render_spec_sheet([_item()], "spec-plaque", "plaque-38x19",
                               start_at=1)
 
+    def test_thermal_4x6_wide_is_4_up_roomy(self):
+        items = [_item() for _ in range(5)]
+        assert _page_count(
+            render_spec_sheet(items, "qr-specs", "thermal-4x6-wide")) == 2
+
+    def test_all_shape_families_render(self):
+        # Every recognized profile family, plus an unknown shape, on the
+        # roomy layout (the one that draws the silhouette).
+        shapes = ("endmill", "ballend", "bullnose", "chamfer", "vbit",
+                  "drill", "spotdrill", "countersink", "engraver", "tap",
+                  "dovetail", "probe", "slittingsaw", "mystery")
+        for shape in shapes:
+            item = resolve_spec(_instance_canonical(
+                diameter=6.0, length=63.0, shape=shape))
+            item.update({"record_id": "r-s", "tool_number": None,
+                         "code": "A3F9X7K2", "url": "https://x/t/A3F9X7K2"})
+            pdf = render_spec_sheet([item], "qr-specs", "thermal-57x32")
+            assert pdf.startswith(b"%PDF"), shape
+
+    def test_probe_and_saw_without_shank_or_loc_render(self):
+        # The shape-appropriate defaults kick in when only DIA + OAL exist.
+        for shape in ("probe", "slittingsaw"):
+            item = resolve_spec(_instance_canonical(
+                diameter=2.0 if shape == "probe" else 63.0,
+                length=50.0, shape=shape))
+            item.update({"record_id": "r-p", "tool_number": None,
+                         "code": None, "url": None})
+            assert render_spec_sheet(
+                [item], "spec-plaque", "plaque-50x25").startswith(b"%PDF")
+
     def test_all_spec_stocks_render(self):
         for stock in SPEC_STOCKS:
             template = "spec-plaque" if stock.startswith("plaque") \

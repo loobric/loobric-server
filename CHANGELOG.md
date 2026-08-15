@@ -3,6 +3,20 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [Unreleased]
+
+### Changed
+- **`thermal-4x6-wide` is now 57×32mm, 4-up** (was 50×25mm, 6-up): the
+  single column matches the thermal-57x32 roll footprint, so spec labels
+  on it get the roomy layout — full DIA/FL/LOC/OAL table **and the
+  silhouette** — instead of the compact one-liner.
+- **Silhouette shape families** — `probe` (stylus + ball tip),
+  `slittingsaw` (thin blade on an arbor), `dovetail` (reverse taper), and
+  `bullnose` (rounded corners) now draw honest profiles instead of the
+  generic endmill rectangle; `countersink`, `engraver`, and `tap` join
+  the pointed family. Probes and saws skip flute-line hatching, and their
+  missing shank-diameter/LOC values get shape-appropriate defaults.
+
 ## [0.11.0] — 2026-08-15
 
 ### Added

@@ -27,8 +27,10 @@ import pytest
 
 # Legacy deep-schema resources: still mounted (include_in_schema=False) for the
 # v2 transition, but excluded from the published schema. See REBOOT.md R6.
+# (tool-presets and tool-usage were removed outright in 0.10.x — the first
+# R6 slice — freeing "preset" for the M3 feeds-and-speeds record.)
 LEGACY_DEEP_RESOURCES = {
-    "tool-items", "tool-assemblies", "tool-instances", "tool-presets", "tool-usage",
+    "tool-items", "tool-assemblies", "tool-instances",
 }
 
 # Retired concepts (glossary "Rejected / removed terms"). Matched as a path

@@ -184,55 +184,16 @@ def test_tool_instance_has_versioning_and_attribution():
 
 
 @pytest.mark.unit
-def test_tool_preset_model_exists():
-    """Test that ToolPreset model is defined.
-    
-    Assumptions:
-    - ToolPreset model exists
-    - Has foreign key to ToolInstance
-    - Has machine_id field
+def test_legacy_preset_usage_models_removed():
+    """The v1 ToolPreset/ToolUsage models are gone (REBOOT.md R6).
+
+    "Preset" is reserved for the M3 feeds-and-speeds record; usage lives
+    in the usage ledger (TOOL_SCHEMA.md §7.8).
     """
-    from loobric_server.database.schema import ToolPreset
-    
-    assert ToolPreset is not None
-    assert hasattr(ToolPreset, 'machine_id')
-    assert hasattr(ToolPreset, 'instance_id')
+    import loobric_server.database.schema as schema
 
-
-@pytest.mark.unit
-def test_tool_preset_has_versioning_and_attribution():
-    """Test that ToolPreset has versioning and user attribution."""
-    from loobric_server.database.schema import ToolPreset
-    
-    assert hasattr(ToolPreset, 'created_at')
-    assert hasattr(ToolPreset, 'updated_at')
-    assert hasattr(ToolPreset, 'version')
-    assert hasattr(ToolPreset, 'user_id')
-
-
-@pytest.mark.unit
-def test_tool_usage_model_exists():
-    """Test that ToolUsage model is defined.
-    
-    Assumptions:
-    - ToolUsage model exists
-    - Has foreign key to ToolPreset
-    """
-    from loobric_server.database.schema import ToolUsage
-    
-    assert ToolUsage is not None
-    assert hasattr(ToolUsage, 'preset_id')
-
-
-@pytest.mark.unit
-def test_tool_usage_has_versioning_and_attribution():
-    """Test that ToolUsage has versioning and user attribution."""
-    from loobric_server.database.schema import ToolUsage
-    
-    assert hasattr(ToolUsage, 'created_at')
-    assert hasattr(ToolUsage, 'updated_at')
-    assert hasattr(ToolUsage, 'version')
-    assert hasattr(ToolUsage, 'user_id')
+    assert not hasattr(schema, 'ToolPreset')
+    assert not hasattr(schema, 'ToolUsage')
 
 
 @pytest.mark.unit
@@ -299,20 +260,16 @@ def test_relationships_defined():
     Assumptions:
     - ToolAssembly references ToolItems
     - ToolInstance references ToolAssembly
-    - ToolPreset references ToolInstance
-    - ToolUsage references ToolPreset
     """
     from loobric_server.database.schema import (
-        ToolItem, ToolAssembly, ToolInstance, ToolPreset, ToolUsage
+        ToolItem, ToolAssembly, ToolInstance
     )
-    
+
     # These will be defined as SQLAlchemy relationships
     # Just verify models are importable for now
     assert ToolItem is not None
     assert ToolAssembly is not None
     assert ToolInstance is not None
-    assert ToolPreset is not None
-    assert ToolUsage is not None
 
 
 @pytest.mark.unit

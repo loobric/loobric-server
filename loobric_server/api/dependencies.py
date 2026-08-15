@@ -135,12 +135,6 @@ def get_tool_item_tags(resource_id: str, db: Session) -> List[str]:
     tool_item = db.query(ToolItem).filter(ToolItem.id == resource_id).first()
     return tool_item.tags if tool_item and tool_item.tags else []
 
-def get_tool_preset_tags(resource_id: str, db: Session) -> List[str]:
-    """Get tags for a tool preset."""
-    from loobric_server.database.schema import ToolPreset
-    tool_preset = db.query(ToolPreset).filter(ToolPreset.id == resource_id).first()
-    return tool_preset.tags if tool_preset and tool_preset.tags else []
-
 def get_tool_instance_tags(resource_id: str, db: Session) -> List[str]:
     """Get tags for a tool instance."""
     from loobric_server.database.schema import ToolInstance
@@ -158,12 +152,6 @@ get_tool_instance_access = require_tag_access(
     resource_type="tool_instance",
     resource_id_param="instance_id",
     resource_tags_getter=get_tool_instance_tags
-)
-
-get_tool_preset_access = require_tag_access(
-    resource_type="tool_preset",
-    resource_id_param="preset_id",
-    resource_tags_getter=get_tool_preset_tags
 )
 
 get_tool_set_access = require_tag_access(

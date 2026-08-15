@@ -284,9 +284,9 @@ def test_log_authorization_decision():
     
     log_authorization_decision(
         user_id="user-123",
-        action="delete:presets",
-        resource_type="tool_presets",
-        resource_id="preset-789",
+        action="delete:records",
+        resource_type="tool_instance_records",
+        resource_id="record-789",
         granted=False,
         reason="User lacks required scope"
     )

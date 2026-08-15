@@ -239,60 +239,6 @@ class ToolInstance(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     assembly: Mapped["ToolAssembly"] = relationship("ToolAssembly")
 
 
-class ToolPreset(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
-    """Tool preset model - machine-specific setup data.
-    
-    Assumptions:
-    - instance_id references ToolInstance
-    - machine_id identifies the CNC machine
-    - tool_number is the T-code
-    - offsets, orientation, limits are JSON fields
-    - tags is JSON array for access control and organization
-    """
-    __tablename__ = "tool_presets"
-    
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    machine_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    tool_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    instance_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tool_instances.id"), nullable=True, index=True)
-    pocket: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    preset_metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    offsets: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    orientation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    limits: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    loaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    loaded_by: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
-    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list, server_default='[]')
-    
-    # Relationships
-    instance: Mapped["ToolInstance"] = relationship("ToolInstance")
-
-
-class ToolUsage(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
-    """Tool usage model - runtime tracking and wear monitoring.
-    
-    Assumptions:
-    - preset_id references ToolPreset
-    - job_id identifies the NC program or work order
-    - wear_progression and events are JSON arrays
-    """
-    __tablename__ = "tool_usage"
-    
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    preset_id: Mapped[str] = mapped_column(String(36), ForeignKey("tool_presets.id"), nullable=False, index=True)
-    job_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    start_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    cycle_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    cut_time: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    wear_progression: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-    events: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
-    
-    # Relationships
-    preset: Mapped["ToolPreset"] = relationship("ToolPreset")
-
-
 class ToolInstanceRecord(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     """Sectioned tool-schema entity (docs/TOOL_SCHEMA.md): a physical tool.
 

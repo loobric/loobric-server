@@ -26,8 +26,6 @@ from loobric_server.api.catalogs import router as catalogs_router
 from loobric_server.api.tool_items import router as tool_items_router
 from loobric_server.api.tool_assemblies import router as tool_assemblies_router
 from loobric_server.api.tool_instances import router as tool_instances_router
-from loobric_server.api.tool_presets import router as tool_presets_router
-from loobric_server.api.tool_usage import router as tool_usage_router
 from loobric_server.api.audit_log_api import router as audit_log_router
 from loobric_server.api.changes_api import router as changes_router
 from loobric_server.api.tool_instance_records import router as tool_instance_records_router
@@ -132,8 +130,6 @@ def create_app() -> FastAPI:
     app.include_router(tool_items_router, include_in_schema=False)
     app.include_router(tool_assemblies_router, include_in_schema=False)
     app.include_router(tool_instances_router, include_in_schema=False)
-    app.include_router(tool_presets_router, include_in_schema=False)
-    app.include_router(tool_usage_router, include_in_schema=False)
     app.include_router(audit_log_router)
     app.include_router(changes_router)
 

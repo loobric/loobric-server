@@ -96,7 +96,7 @@ cares about:
 | Audit log | `/audit-logs` | Who changed what, when |
 
 > Some other paths exist for the retiring v1 substrate (`/tool-instances`,
-> `/tool-items`, `/tool-presets`, …). They are excluded from the OpenAPI schema
+> `/tool-items`, `/tool-assemblies`). They are excluded from the OpenAPI schema
 > and **deprecated — do not build on them.** Use the `*-records` resources.
 
 ### The doors (how you write)

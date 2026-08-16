@@ -95,6 +95,12 @@
   table { width:100%; border-collapse:collapse; font-size:.9rem; }
   td, th { text-align:left; padding:.35rem .4rem; border-top:1px solid var(--line); }
   th { color:var(--dim); font-weight:500; border-top:none; }
+  .dashgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(165px,1fr));
+              gap:.7rem; margin-top:.7rem; }
+  .dashcard { background:var(--card); border:1px solid var(--line); border-radius:12px;
+              padding: .8rem .9rem; cursor:pointer; }
+  .dashcard:hover { border-color:var(--dim); }
+  .dashcard .n { font-size:1.7rem; font-weight:700; display:block; margin:.15rem 0; }
   .ptable td, .ptable th { padding:.28rem .3rem; white-space:nowrap; font-size:.85rem; }
   .ptable td.plabel { max-width:8rem; overflow:hidden; text-overflow:ellipsis; }
   .ptable .pill, .ptable .prov { max-width:6rem; overflow:hidden; text-overflow:ellipsis;
@@ -292,11 +298,11 @@
 // Nav is the DATA (machines, tools, sets, catalog, labels); housekeeping
 // (account, keys, audit, demo) lives behind the email top-right, and each
 // entity tab is a list -> detail pair with the same layout.
-const TABS = [["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["labels","Labels"]];
-let state = { tab:"machines", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, toolSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
+const TABS = [["dashboard","Home"],["machines","Machines"],["tools","Tools"],["toolsets","Tool Sets"],["catalog","Catalog"],["labels","Labels"]];
+let state = { tab:"dashboard", pendingOnly:false, catalogSel:null, setSel:null, machineSel:null, toolSel:null, inbox:[], tools:[], toolsets:[], machines:[], audit:[], catalogs:[],
               machineNames:{}, toolNames:{}, entriesByMachine:{}, entriesById:{}, proposalByEntry:{},
               activeMaps:[], mapByMachine:{}, reconByMachine:{}, keys:[], me:null, users:[],
-              labels:[], printSel:{} };
+              labels:[], printSel:{}, catalogGroups:[] };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c =>
@@ -394,6 +400,7 @@ async function refresh(){
       api("GET","/audit-logs?limit=50"), api("GET","/tool-catalog-records"),
       api("GET","/auth/keys"), api("GET","/auth/me"),
       api("GET","/labels").catch(()=>({items:[]}))]);
+    state.catalogGroups=(await api("GET","/catalogs").catch(()=>({items:[]}))).items||[];
     state.inbox=inbox.items; state.tools=tools.items; state.toolsets=sets.items;
     state.labels=labels.items||[];
     state.machines=machines.items; state.audit=audit.logs||[]; state.catalogs=catalog.items;
@@ -446,7 +453,7 @@ function render(){
     `<button class="${state.tab===id?"active":""}" onclick="setTab('${id}')">${label}`+
     (id==="machines"&&pending?`<span class="n">${pending}</span>`:"")+`</button>`).join("");
   $("#whoami").style.color = state.tab==="account" ? "var(--ink)" : "";
-  const body = {tools:renderTools,toolsets:renderToolSets,machines:renderMachines,catalog:renderCatalog,labels:renderLabels,account:renderAccount}[state.tab]();
+  const body = {dashboard:renderDashboard,tools:renderTools,toolsets:renderToolSets,machines:renderMachines,catalog:renderCatalog,labels:renderLabels,account:renderAccount}[state.tab]();
   // A fresh account is empty, which makes Loobric hard to "see". Offer the demo
   // right where a first-timer lands — but not on the Account tab, which already
   // carries the demo/reset controls.
@@ -714,10 +721,49 @@ const SPEC_STOCKS = {
   "plaque-25x25":     "25x25 mm plaque",
 };
 let specTemplate = "qr-specs", specStock = "avery-5160";
+let specType = "spec";      // "spec" = rendered specs; "inventory" = plain QR label reprint
+function setSpecKind(value){
+  // One combo drives both knobs: a spec template selects the spec type
+  // with that template; "inventory" is its own type (no template).
+  if(value==="inventory"){ specType="inventory"; }
+  else { specType="spec"; specTemplate=value; }
+  render();
+}
 function togglePrintSel(id){
   if(state.printSel[id]) delete state.printSel[id]; else state.printSel[id]=true;
   render(); }
 function printSelCount(){ return Object.keys(state.printSel).length; }
+function selectAllTools(){ state.tools.forEach(t=>state.printSel[rid(t)]=true); render(); }
+function deselectAllTools(){ state.printSel={}; render(); }
+function newestLabelId(toolId){
+  const mine = labelsFor(toolId).slice().sort((a,b)=>
+    String(b.labeled_at||b.created_at||"").localeCompare(String(a.labeled_at||a.created_at||"")));
+  return mine.length ? mine[0].id : null;
+}
+async function printInventoryLabels(){
+  // Reprint each selected tool's newest existing label — plain QR + code
+  // (the late-bound identity sticker), one per tool.
+  const ids = Object.keys(state.printSel);
+  if(!ids.length){ toast("Select tools to print first."); return; }
+  const labelIds = [], unlabeled = [];
+  for(const id of ids){
+    const lid = newestLabelId(id);
+    if(lid) labelIds.push(lid); else unlabeled.push(id);
+  }
+  if(unlabeled.length){
+    if(await confirmDialog(unlabeled.length+" selected tool(s) have no label yet. Create labels for them now?")){
+      try{ for(const id of unlabeled) await api("POST","/labels",{entity_id:id});
+           await refresh(); await printInventoryLabels(); }
+      catch(e){ toast(e.message); }
+      return;
+    }
+    if(!labelIds.length) return;
+  }
+  try{
+    await apiPdf("/labels/sheet", {label_ids: labelIds, stock: specStock});
+    toast("Print at 100% scale.");
+  }catch(e){ toast(e.message); }
+}
 async function printSpecLabels(){
   const ids = Object.keys(state.printSel);
   if(!ids.length){ toast("Select tools to print first."); return; }
@@ -768,45 +814,87 @@ function _boundAtMap(){
   return boundAt;
 }
 
+// ---- Dashboard: where /ui/ lands — a shape-of-the-shop overview, then pick
+// a direction. Attention first (the Inbox rule: things awaiting a human),
+// then one card per area with its count.
+function renderDashboard(){
+  const pending = pendingEntries().length;
+  const notReady = state.machines.filter(m=>{
+    const r=state.reconByMachine[rid(m)];
+    return r && r.active && !r.ready;
+  });
+  const blanks = blankLabels().length;
+  const attention = (pending || notReady.length) ? `<div class="card" style="border-left:3px solid var(--warn)">
+      <div class="row"><strong>Needs a decision</strong></div>
+      ${pending?`<div class="trow"><span class="tinfo">&#x26A0; <b>${pending}</b> proposed tool binding${pending===1?"":"s"} awaiting your confirmation</span>
+        <button class="mini link" onclick="setTab('machines')">Open machines</button></div>`:""}
+      ${notReady.map(m=>`<div class="trow"><span class="tinfo">
+          <span class="pill unbound">NOT READY</span>
+          <strong class="link-ish" onclick="openMachine('${rid(m)}')">${esc(state.machineNames[rid(m)])}</strong>
+          <span class="muted">active setup has unmet claims</span></span></div>`).join("")}
+    </div>` : "";
+  const card = (tab, label, n, sub) => `<div class="dashcard" onclick="setTab('${tab}')">
+      <span class="muted">${label}</span><span class="n">${n}</span>
+      <span class="muted" style="font-size:.8rem">${sub}</span></div>`;
+  const readyMachines = state.machines.filter(m=>{
+    const r=state.reconByMachine[rid(m)]; return r && r.active && r.ready; }).length;
+  return attention + `<div class="dashgrid">
+    ${card("machines","Machines",state.machines.length,
+        state.machines.length ? (pending?`${pending} pending`:(readyMachines?`${readyMachines} ready`:"&nbsp;")) : "register on first sync")}
+    ${card("tools","Tools",state.tools.length,"physical tools in the crib")}
+    ${card("toolsets","Tool Sets",state.toolsets.length,"CAM-side collections")}
+    ${card("catalog","Catalog",state.catalogs.length,"published nominal specs")}
+    ${card("labels","Labels",state.labels.length, blanks?`${blanks} blank on hand`:"print &amp; spec labels")}
+  </div>
+  <div class="card" style="margin-top:.7rem">
+    <div class="explain">The tool number is the contract between CAM and the
+      machine. Loobric records both sides' number&#x2194;tool mappings and makes
+      their agreement a checkable fact: <b>Machines</b> show what's mounted and
+      whether the active setup is satisfied; <b>Tools</b> are the physical crib;
+      <b>Tool Sets</b> carry CAM's claims; <b>Catalog</b> holds nominal specs;
+      <b>Labels</b> put a scannable identity on the tool itself.</div>
+  </div>`;
+}
+
 function renderTools(){
   if(state.toolSel) return renderToolDetail();
   if(!state.tools.length) return `<div class="empty">No tool instances yet.<br><span class="muted">They appear as machines report tools and you bind them, or as clients sync.</span></div>`;
   const boundAt=_boundAtMap();
-  const nSel=printSelCount();
-  const specBar = `<div class="card">
-    <div class="row"><strong>Print spec labels</strong>
-      <span class="rowact">
-        <select class="picker" onchange="specTemplate=this.value">${
-          Object.entries(SPEC_TEMPLATES).map(([v,l])=>
-            `<option value="${v}" ${specTemplate===v?"selected":""}>${esc(l)}</option>`).join("")}</select>
-        <select class="picker" onchange="specStock=this.value">${
-          Object.entries(SPEC_STOCKS).map(([v,l])=>
-            `<option value="${v}" ${specStock===v?"selected":""}>${esc(l)}</option>`).join("")}</select>
-        <button class="mini create" onclick="printSpecLabels()" ${nSel?"":"disabled"}>Print${nSel?" "+nSel:""}&hellip;</button>
-      </span></div>
-    <div class="explain" style="margin-top:.6rem">Specs in ink (&#x2300;, FL, LOC, OAL,
-      T#, silhouette) for tools you identify by reading, not scanning. Check tools
-      below, pick a layout and stock, print at 100% scale. Printed values are a
-      snapshot &mdash; reprint after a regrind or rebind; a QR on the label always
-      scans to current truth.</div>
-  </div>`;
   const rows = state.tools.map(t=>{
     const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape"), hours=cf(t,"usage.hours");
     const retired=cf(t,"status")==="retired", where=(boundAt[rid(t)]||[]);
     const nlbl=labelsFor(rid(t)).length;
-    return `<div class="trow">
-      <span class="tinfo">
-        <input type="checkbox" ${state.printSel[rid(t)]?"checked":""}
-          onclick="togglePrintSel('${rid(t)}')" title="select for spec-label printing">
-        <strong class="link-ish" onclick="openTool('${rid(t)}')">${esc(cf(t,"name")||"(unnamed)")}</strong>
-        <span class="muted">${shape?esc(shape):""}${dia!=null?" &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h":""}</span>
-        ${retired?'<span class="pill unbound">retired</span>':""}
-        ${where.map(w=>`<span class="pill bound">T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span>`).join(" ")}
-        ${nlbl?`<span class="pill info">${nlbl} label${nlbl===1?"":"s"}</span>`:""}
-      </span>
-    </div>`;
+    return `<tr>
+      <td class="plabel" title="${esc(cf(t,"name")||"(unnamed)")}">
+        <strong class="link-ish" onclick="openTool('${rid(t)}')">${esc(cf(t,"name")||"(unnamed)")}</strong></td>
+      <td>${shape?esc(shape):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${dia!=null?"&#x2300;"+esc(dia):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${hours!=null?esc(hours)+`<span class="muted"> h</span>`:`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:center">${nlbl||`<span class="muted">&mdash;</span>`}</td>
+      <td>${where.map(w=>`<span class="pill bound">T${w.n} @ ${esc(state.machineNames[rid(w.m)])}</span>`).join(" ")
+            ||`<span class="muted">&mdash;</span>`}</td>
+      <td>${retired?'<span class="pill unbound">retired</span>':""}</td>
+      <td style="text-align:right">
+        <button class="mini link" title="Rename" onclick="setName('${rid(t)}')">&#x270E;</button>
+        <button class="mini link" title="${retired?"Return to service":"Mark no longer in service"}"
+          onclick="${retired?"unretireTool":"retireTool"}('${rid(t)}')">${retired?"Restore":"Retire"}</button>
+        <button class="mini link" title="Delete tool" onclick="deleteRecord('${rid(t)}')">&#x2715;</button>
+      </td>
+    </tr>`;
   }).join("");
-  return specBar + `<div class="card">${rows}</div>`;
+  return `<div class="card"><div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr>
+        <th>Name</th><th>Type</th>
+        <th style="text-align:right" title="diameter">&#x2300;</th>
+        <th style="text-align:right" title="lifetime use, derived from the usage ledger">Use</th>
+        <th style="text-align:center">Labels</th><th>Mounted</th><th></th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div class="muted" style="font-size:.78rem;margin-top:.4rem">Spec-label
+      printing lives on the <span class="link-ish" onclick="state.tab='labels';render()">Labels</span> tab.</div>
+  </div>`;
 }
 
 function renderToolDetail(){
@@ -849,7 +937,7 @@ function renderLabels(){
     `<option value="custom" ${labelCustom?"selected":""}>Custom count&hellip;</option>`+
     `</select>`;
   const header = `<div class="card">
-    <div class="row"><strong>Physical labels</strong>
+    <div class="row"><strong>Print blank labels</strong>
       <span class="rowact">${stockPicker}
         <button class="mini create" onclick="printBlankSheet()">Print blank labels&hellip;</button></span></div>
     <div class="explain" style="margin-top:.6rem">Stickers link the tool in the
@@ -857,24 +945,86 @@ function renderLabels(){
       scan it (or open <code>/t/&lt;code&gt;</code>) to attach a record. Anyone
       scanning a labeled tool sees its public spec page; only you see more.</div>
   </div>`;
-  const blankRows = blanks.length ? blanks.map(l=>`<div class="trow">
-      <span class="tinfo"><span class="id">${esc(l.code)}</span>
-        <a class="dl" href="/t/${esc(l.code)}" target="_blank" rel="noopener">/t/${esc(l.code)}</a></span>
+
+  // ---- Print spec labels: pick a type, pick stock, multi-select tools ------
+  const isSpec = specType==="spec";
+  const stockDict = isSpec ? SPEC_STOCKS
+    : Object.fromEntries(Object.entries(LABEL_STOCKS).map(([v,s])=>[v,s.label]));
+  if(!(specStock in stockDict)) specStock = "avery-5160";
+  const nSel = printSelCount();
+  const toolRows = state.tools.map(t=>{
+    const id=rid(t), nlbl=labelsFor(id).length;
+    const dia=cf(t,"geometry.diameter"), shape=cf(t,"geometry.shape");
+    return `<tr>
+      <td style="width:1.6rem"><input type="checkbox" ${state.printSel[id]?"checked":""}
+            onclick="togglePrintSel('${id}')"></td>
+      <td class="plabel" title="${esc(cf(t,"name")||"(unnamed)")}"><b>${esc(cf(t,"name")||"(unnamed)")}</b></td>
+      <td>${shape?esc(shape):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${dia!=null?"&#x2300;"+esc(dia):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:center">${nlbl||`<span class="muted">none</span>`}</td>
+    </tr>`;
+  }).join("");
+  const specSection = `<div class="card">
+    <div class="row"><strong>Print spec labels</strong>
       <span class="rowact">
-        <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button>
-        <button class="mini del" onclick="deleteLabel('${l.id}','${esc(l.code)}')">Delete</button></span>
-    </div>`).join("") : `<div class="muted" style="padding:.45rem 0">No blank labels on hand.</div>`;
-  const usedRows = used.length ? used.map(l=>`<div class="trow">
-      <span class="tinfo"><span class="id">${esc(l.code)}</span>
-        <strong class="link-ish" onclick="openTool('${l.entity_id}')">${esc(state.toolNames[l.entity_id]||l.entity_id.slice(0,8))}</strong></span>
+        <select class="picker" onchange="setSpecKind(this.value)">
+          ${Object.entries(SPEC_TEMPLATES).map(([v,l])=>
+            `<option value="${v}" ${isSpec&&specTemplate===v?"selected":""}>Spec &mdash; ${esc(l.replace(/^Spec plaque/,"plaque"))}</option>`).join("")}
+          <option value="inventory" ${isSpec?"":"selected"}>Inventory &mdash; QR + code only</option>
+        </select>
+        <select class="picker" onchange="specStock=this.value">${
+          Object.entries(stockDict).map(([v,l])=>
+            `<option value="${v}" ${specStock===v?"selected":""}>${esc(l)}</option>`).join("")}</select>
+        <button class="mini create" onclick="${isSpec?"printSpecLabels":"printInventoryLabels"}()"
+          ${nSel?"":"disabled"}>Print${nSel?" "+nSel:""}&hellip;</button>
+      </span></div>
+    <div class="explain" style="margin-top:.6rem">${isSpec
+      ?`Specs in ink (&#x2300;, FL, LOC, OAL, T#, silhouette) for tools you identify
+        by reading, not scanning. Printed values are a snapshot &mdash; reprint after
+        a regrind or rebind; a QR always scans to current truth.`
+      :`Reprints each selected tool's newest identity label &mdash; plain QR + code,
+        late-bound: the sticker never goes stale because it carries no specs.`}
+      Print at 100% scale.</div>
+    <div class="row" style="margin-top:.5rem">
+      <span class="muted" style="font-size:.82rem">${nSel} of ${state.tools.length} selected</span>
       <span class="rowact">
+        <button class="mini link" onclick="selectAllTools()">Select all</button>
+        <button class="mini link" onclick="deselectAllTools()">Deselect all</button>
+      </span></div>
+    <div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr><th></th><th>Name</th><th>Type</th>
+        <th style="text-align:right" title="diameter">&#x2300;</th>
+        <th style="text-align:center">Labels</th></tr></thead>
+      <tbody>${toolRows}</tbody>
+    </table></div>
+  </div>`;
+  const blankRows = blanks.length ? `<div style="overflow-x:auto"><table class="ptable">
+    <thead><tr><th>Code</th><th>Resolves to</th><th></th></tr></thead>
+    <tbody>${blanks.map(l=>`<tr>
+      <td><span class="id">${esc(l.code)}</span></td>
+      <td><a class="dl" href="/t/${esc(l.code)}" target="_blank" rel="noopener">/t/${esc(l.code)}</a></td>
+      <td style="text-align:right">
+        <button class="mini link" title="Reprint" onclick="reprintLabel('${l.id}')">Print</button>
+        <button class="mini link" title="Delete — its printed code stops resolving forever"
+          onclick="deleteLabel('${l.id}','${esc(l.code)}')">&#x2715;</button></td>
+    </tr>`).join("")}</tbody></table></div>`
+    : `<div class="muted" style="padding:.45rem 0">No blank labels on hand.</div>`;
+  const usedRows = used.length ? `<div style="overflow-x:auto"><table class="ptable">
+    <thead><tr><th>Code</th><th>Tool</th><th></th></tr></thead>
+    <tbody>${used.map(l=>`<tr>
+      <td><span class="id">${esc(l.code)}</span></td>
+      <td class="plabel" title="${esc(state.toolNames[l.entity_id]||"")}">
+        <strong class="link-ish" onclick="openTool('${l.entity_id}')">${esc(state.toolNames[l.entity_id]||l.entity_id.slice(0,8))}</strong></td>
+      <td style="text-align:right">
         <a class="dl" href="/t/${esc(l.code)}?view=public" target="_blank" rel="noopener"
-           title="exactly what anyone else's scan shows">public view</a>
+           title="exactly what anyone else's scan shows">public</a>
         <a class="dl" href="/t/${esc(l.code)}" target="_blank" rel="noopener"
-           title="what you see when you scan it">owner view</a>
-        <button class="mini link" onclick="reprintLabel('${l.id}')">Print</button></span>
-    </div>`).join("") : `<div class="muted" style="padding:.45rem 0">No labels on tools yet.</div>`;
-  return header
+           title="what you see when you scan it">owner</a>
+        <button class="mini link" title="Reprint" onclick="reprintLabel('${l.id}')">Print</button></td>
+    </tr>`).join("")}</tbody></table></div>`
+    : `<div class="muted" style="padding:.45rem 0">No labels on tools yet.</div>`;
+  return header + specSection
     + `<div class="card"><div class="section-h" style="margin-top:0">Blank (${blanks.length})</div>${blankRows}</div>`
     + `<div class="card"><div class="section-h" style="margin-top:0">On tools (${used.length})</div>${usedRows}</div>`;
 }
@@ -902,17 +1052,26 @@ async function removeMember(setId, toolId){
 function renderToolSets(){
   if(state.setSel) return renderToolSetDetail();
   if(!state.toolsets.length) return `<div class="empty">No tool sets yet.</div>`;
-  return state.toolsets.map(s=>{
+  const rows = state.toolsets.map(s=>{
     const activeOn=setActiveOn(rid(s)), members=(s.canonical.members||[]);
     const where=activeOn.map(m=>esc(state.machineNames[m]||m.slice(0,8))).join(", ");
-    return `<div class="card">
-      <div class="row"><strong class="link-ish" onclick="openSet('${rid(s)}')">${esc(cf(s,"name")||"(unnamed)")}</strong>
-        <span>${idLink(rid(s))}</span></div>
-      <div class="muted">${members.length} tool(s)${activeOn.length?" &middot; active setup on "+where:" &middot; not active on any machine &mdash; every number is provisional"}</div>
-      <div class="row" style="margin-top:.6rem"><span class="rowact">
-        <button class="unbind" onclick="deleteSet('${rid(s)}')">Delete</button></span></div>
-    </div>`;
+    return `<tr>
+      <td class="plabel" title="${esc(cf(s,"name")||"(unnamed)")}">
+        <strong class="link-ish" onclick="openSet('${rid(s)}')">${esc(cf(s,"name")||"(unnamed)")}</strong></td>
+      <td style="text-align:right">${members.length}</td>
+      <td>${activeOn.length?`<span class="pill bound">active</span> ${where}`
+          :`<span class="muted" title="not active on any machine — every number is provisional">&mdash;</span>`}</td>
+      <td style="text-align:right">
+        <button class="mini link" title="Delete tool set (the tools stay)"
+          onclick="deleteSet('${rid(s)}')">&#x2715;</button></td>
+    </tr>`;
   }).join("");
+  return `<div class="card"><div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr><th>Name</th><th style="text-align:right">Tools</th>
+        <th>Setup</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
 }
 // A member's per-line state label + detail, per the ratified vocabulary
 // (satisfied lines read "ok"; anything else is an unmet claim).
@@ -932,18 +1091,32 @@ function renderToolSetDetail(){
   const activeOn=setActiveOn(rid(s));
   const members=(s.canonical.members||[]).slice()
     .sort((a,b)=>(((a.number||{}).value)??1e9)-(((b.number||{}).value)??1e9));
-  const rows = members.length ? members.map(m=>{
+  const memberRows = members.length ? members.map(m=>{
     const tid=m.tool_record_id, num=m.number||{};
     const t=state.tools.find(x=>rid(x)===tid);
     const tname=t?(cf(t,"name")||tid.slice(0,8)):(state.toolNames[tid]||tid.slice(0,8));
     const dia=t?cf(t,"geometry.diameter"):null, shape=t?cf(t,"geometry.shape"):null;
     const numDisp=num.value!=null?`T${num.value}`:`<span class="unknownval">no #</span>`;
-    return `<div class="frow">
-      <span class="flabel">${numDisp} ${provBadge(num.source||"unknown")}</span>
-      <span class="fval"><strong>${esc(tname)}</strong>${shape?` <span class="muted">${esc(shape)}</span>`:""}${dia!=null?` <span class="muted">&#x2300;${dia}</span>`:""} ${idLink(tid)} ${memberStateBadge(m)}</span>
-      <button class="mini del" onclick="removeMember('${rid(s)}','${tid}')">Remove</button>
-    </div>`;
-  }).join("") : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric add-to-set</code>.</div>`;
+    return `<tr>
+      <td>${numDisp} ${provBadge(num.source||"unknown")}</td>
+      <td class="plabel" title="${esc(tname)}">
+        <strong class="link-ish" onclick="openTool('${tid}')">${esc(tname)}</strong></td>
+      <td>${shape?esc(shape):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${dia!=null?"&#x2300;"+esc(dia):`<span class="muted">&mdash;</span>`}</td>
+      <td>${memberStateBadge(m)}</td>
+      <td style="text-align:right">
+        <button class="mini link" title="Remove from set (the tool stays)"
+          onclick="removeMember('${rid(s)}','${tid}')">&#x2715;</button></td>
+    </tr>`;
+  }).join("") : "";
+  const rows = members.length ? `<div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr><th title="the CAM side's claimed number">T#</th><th>Tool</th>
+        <th>Type</th><th style="text-align:right" title="diameter">&#x2300;</th>
+        <th>State</th><th></th></tr></thead>
+      <tbody>${memberRows}</tbody>
+    </table></div>`
+    : `<div class="muted" style="padding:.45rem 0">No tools in this set yet &mdash; add them with <code>loobric add-to-set</code>.</div>`;
   const where=activeOn.map(m=>esc(state.machineNames[m]||m.slice(0,8))).join(", ");
   return `<div class="row" style="margin-bottom:.6rem">
       <button class="mini link" onclick="backToToolSets()">&#x2190; Back to tool sets</button>
@@ -968,17 +1141,31 @@ function renderMachines(){
   const banner = pending
     ? `<div class="explain">&#x26A0; <b>${pending}</b> tool-table entr${pending===1?"y has":"ies have"} a proposed tool awaiting your decision &mdash; open the machine to resolve.</div>`
     : "";
-  return banner + state.machines.map(m=>{
+  const rows = state.machines.map(m=>{
     const mid=rid(m), entries=state.entriesByMachine[mid]||[], recon=state.reconByMachine[mid];
+    const pendingHere=entries.filter(e=>cf(e,"bound_instance_id")==null
+                                        && hasProposal(e)).length;
     const setup = (recon && recon.active)
       ? `${recon.ready?`<span class="pill bound">READY</span>`:`<span class="pill unbound">NOT READY</span>`} ${esc(recon.tool_set_name||"(unnamed)")}`
       : `<span class="muted">no active setup</span>`;
-    return `<div class="card">
-      <div class="row"><strong class="link-ish" onclick="openMachine('${mid}')">${esc(state.machineNames[mid])}</strong>
-        <span>${idLink(mid)}</span></div>
-      <div class="muted">${esc(cf(m,"controller_type")||"")}${cf(m,"controller_type")?" &middot; ":""}${entries.length} tool(s) &middot; ${setup}</div>
-    </div>`;
+    return `<tr>
+      <td class="plabel" title="${esc(state.machineNames[mid])}">
+        <strong class="link-ish" onclick="openMachine('${mid}')">${esc(state.machineNames[mid])}</strong></td>
+      <td>${cf(m,"controller_type")?esc(cf(m,"controller_type")):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${entries.length}</td>
+      <td>${setup}</td>
+      <td>${pendingHere?`<span class="pill info">${pendingHere} pending</span>`:""}</td>
+      <td style="text-align:right">
+        <button class="mini link" title="Delete machine and its tool table (tool instances stay)"
+          onclick="deleteMachine('${mid}')">&#x2715;</button></td>
+    </tr>`;
   }).join("");
+  return banner + `<div class="card"><div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr><th>Machine</th><th>Controller</th>
+        <th style="text-align:right">Tools</th><th>Setup</th><th></th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
 }
 
 // ---- one machine's page: ONE unified list of every line — table entries AND
@@ -1525,10 +1712,49 @@ const CATALOG_IMPORT_CONTROL = `
          accept=".zip,.p21,.stp,.step,.xml,.csv" onchange="importCatalogFile(this)">
   <button class="mini create" onclick="document.getElementById('catimport').click()">Import manufacturer file&hellip;</button>`;
 
+// ---- Catalogs: named collections of catalog records (grilled 2026-08-16).
+// Organization, never identity: a record may sit in many catalogs, the
+// Uncataloged group keeps the pile visible, deleting a catalog keeps records.
+function groupMembers(g){ return ((g.canonical.members||{}).value)||[]; }
+function catalogsOfRecord(recordId){
+  return (state.catalogGroups||[]).filter(g=>groupMembers(g).includes(recordId));
+}
+async function newCatalogGroup(){
+  const name = await promptDialog("Name for the new catalog:", "");
+  if(!name || !name.trim()) return;
+  try{ await api("POST","/catalogs",{name:name.trim(), actor:"human@web"});
+       toast("Catalog created."); refresh(); }catch(e){ toast(e.message); }
+}
+async function renameCatalogGroup(cid){
+  const g=(state.catalogGroups||[]).find(x=>rid(x)===cid); if(!g) return;
+  const name = await promptDialog("Rename catalog:", cf(g,"name")||"");
+  if(!name || !name.trim()) return;
+  try{ await api("POST","/catalogs/"+cid+"/rename",{name:name.trim(), actor:"human@web"});
+       toast("Renamed."); refresh(); }catch(e){ toast(e.message); }
+}
+async function deleteCatalogGroup(cid){
+  const g=(state.catalogGroups||[]).find(x=>rid(x)===cid); if(!g) return;
+  if(!(await confirmDialog(`Delete catalog "${cf(g,"name")||cid.slice(0,8)}"? Its ${groupMembers(g).length} record(s) stay — a catalog is organization, not identity.`))) return;
+  try{ await api("DELETE","/catalogs/"+cid); toast("Catalog deleted."); refresh(); }
+  catch(e){ toast(e.message); }
+}
+async function toggleRecordCatalog(cid, recordId){
+  // Read-modify-write over the replace-only members door.
+  const g=(state.catalogGroups||[]).find(x=>rid(x)===cid); if(!g) return;
+  const members=groupMembers(g).slice();
+  const at=members.indexOf(recordId);
+  if(at>=0) members.splice(at,1); else members.push(recordId);
+  try{ await api("POST","/catalogs/"+cid+"/members",{members, actor:"human@web"});
+       refresh(); }catch(e){ toast(e.message); }
+}
+
 function renderCatalog(){
   if(state.catalogSel) return renderCatalogDetail();
   const header = `<div class="card"><div class="row">
-      <strong>Catalog records</strong>${CATALOG_IMPORT_CONTROL}</div>
+      <strong>Catalog records</strong>
+      <span class="rowact">
+        <button class="mini create" onclick="newCatalogGroup()">New catalog&hellip;</button>
+        ${CATALOG_IMPORT_CONTROL}</span></div>
     <div class="explain" style="margin-top:.6rem">Published catalog specs &mdash;
       nominal, <b>asserted</b> data. Import a manufacturer's downloaded file
       (GTC zip, STEP P21, DIN 4000, SolidCAM, hyperMILL) or author records with
@@ -1536,19 +1762,55 @@ function renderCatalog(){
       for it, so a manufacturer's claim reads differently from a real
       measurement.</div></div>`;
   if(!state.catalogs.length) return header + `<div class="empty">No catalog records yet.</div>`;
-  return header + state.catalogs.map(c=>{
-    const name=cf(c,"name"), mfr=cf(c,"manufacturer"), pc=cf(c,"product_code");
-    return `<div class="card">
-      <div class="row"><strong class="link-ish" onclick="openCatalog('${rid(c)}')">${esc(name||"(unnamed)")}</strong>
-        ${idLink(rid(c))}</div>
-      <div class="muted">${mfr?esc(mfr):"<i>manufacturer unknown</i>"}${pc!=null?" &middot; "+esc(pc):""}</div>
-      <div class="row" style="margin-top:.6rem"><span class="muted">catalog record</span>
-        <span class="rowact">
-          <button class="mini create" onclick="openCreateFromCatalog('${rid(c)}')">Create tool from catalog</button>
-          <button class="unbind" onclick="deleteCatalog('${rid(c)}')">Delete</button>
-        </span></div>
-    </div>`;
-  }).join("");
+  const recordTable = records => `<div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr><th>Name</th><th>Manufacturer</th><th>Product code</th>
+        <th style="text-align:right" title="nominal diameter">&#x2300;</th>
+        <th style="text-align:center" title="tools created from this record">Made</th>
+        <th></th></tr></thead>
+      <tbody>${records.map(c=>{
+        const name=cf(c,"name"), mfr=cf(c,"manufacturer"), pc=cf(c,"product_code");
+        const dia=cf(c,"geometry.diameter");
+        const made=instancesFromCatalog(rid(c)).length;
+        return `<tr>
+          <td class="plabel" title="${esc(name||"(unnamed)")}">
+            <strong class="link-ish" onclick="openCatalog('${rid(c)}')">${esc(name||"(unnamed)")}</strong></td>
+          <td class="plabel" title="${mfr?esc(mfr):""}">${mfr?esc(mfr):`<span class="muted">&mdash;</span>`}</td>
+          <td>${pc!=null?esc(pc):`<span class="muted">&mdash;</span>`}</td>
+          <td style="text-align:right">${dia!=null?"&#x2300;"+esc(dia):`<span class="muted">&mdash;</span>`}</td>
+          <td style="text-align:center">${made||`<span class="muted">&mdash;</span>`}</td>
+          <td style="text-align:right">
+            <button class="mini create" title="Create a physical tool from this catalog record"
+              onclick="openCreateFromCatalog('${rid(c)}')">+ tool</button>
+            <button class="mini link" title="Delete catalog record (tools created from it stay)"
+              onclick="deleteCatalog('${rid(c)}')">&#x2715;</button></td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>`;
+  const byId = Object.fromEntries(state.catalogs.map(c=>[rid(c), c]));
+  const grouped = new Set();
+  const groups = (state.catalogGroups||[]).slice()
+    .sort((a,b)=>String(cf(a,"name")||"").localeCompare(String(cf(b,"name")||"")))
+    .map(g=>{
+      const members = groupMembers(g).map(id=>byId[id]).filter(Boolean);
+      members.forEach(c=>grouped.add(rid(c)));
+      return `<div class="card">
+        <div class="row"><strong>${esc(cf(g,"name")||"(unnamed)")}</strong>
+          <span class="rowact"><span class="muted" style="font-size:.82rem">${members.length} record${members.length===1?"":"s"}</span>
+            <button class="mini link" title="Rename catalog" onclick="renameCatalogGroup('${rid(g)}')">&#x270E;</button>
+            <button class="mini link" title="Delete catalog (its records stay)"
+              onclick="deleteCatalogGroup('${rid(g)}')">&#x2715;</button></span></div>
+        ${members.length?recordTable(members)
+          :`<div class="muted" style="padding:.45rem 0">Empty &mdash; add records from a record's page, or import into it.</div>`}
+      </div>`;
+    }).join("");
+  const loose = state.catalogs.filter(c=>!grouped.has(rid(c)));
+  const uncat = loose.length ? `<div class="card">
+      <div class="row"><strong>Uncataloged</strong>
+        <span class="muted" style="font-size:.82rem">${loose.length} record${loose.length===1?"":"s"} in no catalog &mdash; organize them from each record's page</span></div>
+      ${recordTable(loose)}
+    </div>` : "";
+  return header + groups + uncat;
 }
 function renderCatalogDetail(){
   const c=state.catalogs.find(x=>rid(x)===state.catalogSel);
@@ -1577,6 +1839,17 @@ function renderCatalogDetail(){
         ${provBadge("unknown")} an honest gap (never a guess).</div>
       <div class="section-h">Identity</div>${idRows}
       <div class="section-h">Geometry</div>${geomRows}
+      <div class="section-h">Catalogs</div>
+      ${(state.catalogGroups||[]).length ? (state.catalogGroups||[]).map(g=>{
+        const member = groupMembers(g).includes(rid(c));
+        return `<label class="trow" style="cursor:pointer"><span class="tinfo">
+          <input type="checkbox" ${member?"checked":""}
+            onclick="toggleRecordCatalog('${rid(g)}','${rid(c)}')">
+          ${esc(cf(g,"name")||"(unnamed)")}
+          <span class="muted">${groupMembers(g).length} record${groupMembers(g).length===1?"":"s"}</span>
+        </span></label>`;
+      }).join("")
+      : `<div class="muted" style="padding:.45rem 0">No catalogs yet &mdash; create one on the Catalog tab to organize records.</div>`}
       ${mediaSection(c,"tool-catalog-records")}
       ${presetsSection(c,"tool-catalog-records")}
       ${clientSections(c)}
@@ -1667,6 +1940,15 @@ function renderAccount(){
           <button class="mini reject" onclick="doLogout()">Sign out</button></span></div>
       <div class="row" style="margin-top:.7rem"><span class="muted">Password</span>
         <button class="mini link" onclick="openChangePw()">Change password</button></div>
+    </div>
+    <div class="card">
+      <div class="row"><strong>Backup</strong>
+        <a class="mini create" style="text-decoration:none" href="/api/v1/account/export"
+           download>Download backup (.zip)</a></div>
+      <div class="explain" style="margin-top:.6rem">Everything your account owns,
+        in one zip: every record with its provenance and client sections, tool
+        sets, machines, tool tables, labels, presets, and attached media &mdash;
+        your data in your hands, no admin required.</div>
     </div>
     <div class="card">
       <div class="row"><strong>API keys</strong>

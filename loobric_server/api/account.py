@@ -26,6 +26,7 @@ from loobric_server.auth.doors import door
 from loobric_server.api.auth import get_authenticated_user, get_db
 from loobric_server.audit import create_audit_log
 from loobric_server.database.schema import (
+    Catalog,
     EntryProposal,
     MachineRecord,
     MachineSetMap,
@@ -46,6 +47,7 @@ _TOOL_DATA_MODELS = (
     ("setups", MachineSetMap),
     ("tool_sets", ToolSetRecord),
     ("tool_instances", ToolInstanceRecord),
+    ("catalogs", Catalog),
     ("tool_catalogs", ToolCatalogRecord),
     ("machines", MachineRecord),
 )
@@ -198,3 +200,92 @@ def seed_demo(db: Session = Depends(get_db),
                      entity_type="account", entity_id=uid, changes=created)
     db.commit()
     return {"seeded": True, "created": created}
+
+
+@router.get("/export")
+def export_account(db: Session = Depends(get_db),
+                   user: User = Depends(door("read"))):
+    """Download the caller's OWN tool data as one zip — the owner-operated
+    escape hatch (the first slice of account portability, #46): every record
+    collection as sectioned JSON (canonical with provenance, client sections,
+    presets — the records verbatim), the media blobs they reference, and a
+    manifest. Admin `/backup` stays the operator's disaster-recovery tool;
+    this is the user's.
+
+    Read-shaped and read-gated: exporting changes nothing (an audit row
+    records that it happened)."""
+    import io
+    import json as _json
+    import zipfile
+    from datetime import datetime, UTC
+
+    from fastapi import Response
+
+    from loobric_server import media_store
+    from loobric_server.database.schema import Label
+
+    def _iso(value):
+        return value.isoformat() if value is not None else None
+
+    def _record(row):
+        return {"internal": {"id": row.id, "version": row.version,
+                             "created_at": _iso(row.created_at),
+                             "updated_at": _iso(row.updated_at)},
+                "canonical": row.canonical or {},
+                "clients": getattr(row, "clients", None) or {}}
+
+    collections = {
+        "tool_instance_records": ToolInstanceRecord,
+        "tool_catalog_records": ToolCatalogRecord,
+        "tool_set_records": ToolSetRecord,
+        "machine_records": MachineRecord,
+        "tool_table_entry_records": ToolTableEntryRecord,
+        "catalogs": Catalog,
+    }
+    uid = user.id
+    buffer = io.BytesIO()
+    manifest = {"format": "loobric-account-export", "format_version": 1,
+                "exported_at": datetime.now(UTC).isoformat(),
+                "account": user.email, "counts": {}}
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        media_refs = {}
+        for name, model in collections.items():
+            rows = db.query(model).filter(model.user_id == uid).all()
+            records = [_record(row) for row in rows]
+            zf.writestr(name + ".json", _json.dumps(records, indent=1))
+            manifest["counts"][name] = len(records)
+            for record in records:
+                for m in ((record["canonical"].get("media") or {})
+                          .get("value")) or []:
+                    if m.get("ref"):
+                        media_refs.setdefault(m["ref"], m)
+        labels = db.query(Label).filter(Label.user_id == uid).all()
+        zf.writestr("labels.json", _json.dumps([
+            {"id": row.id, "code": row.code,
+             "entity_type": row.entity_type, "entity_id": row.entity_id,
+             "labeled_at": _iso(getattr(row, "labeled_at", None)),
+             "created_at": _iso(row.created_at)}
+            for row in labels], indent=1))
+        manifest["counts"]["labels"] = len(labels)
+        stored = missing = 0
+        for ref, m in media_refs.items():
+            if media_store.blob_exists(ref):
+                zf.writestr("media/" + ref.replace(":", "_"),
+                            media_store.read_blob(ref))
+                stored += 1
+            else:
+                missing += 1                # honest gap, never invented
+        manifest["counts"]["media_files"] = stored
+        if missing:
+            manifest["counts"]["media_missing"] = missing
+        zf.writestr("manifest.json", _json.dumps(manifest, indent=1))
+
+    create_audit_log(session=db, user_id=uid, operation="EXPORT",
+                     entity_type="account", entity_id=uid,
+                     changes=manifest["counts"])
+    db.commit()
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=buffer.getvalue(), media_type="application/zip",
+        headers={"Content-Disposition":
+                 'attachment; filename="loobric-export-%s.zip"' % stamp})

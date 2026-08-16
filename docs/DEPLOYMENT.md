@@ -106,6 +106,25 @@ services:
   loobric-server:
     environment:
       DATABASE_URL: postgresql://loobric_server:${POSTGRES_PASSWORD}@db:5432/loobric_server
+      # Media blobs (STEP models, drawings, datasheets) live on DISK, not in
+      # the database. Without a persistent volume here, every redeploy
+      # silently discards all media — the references survive in canonical,
+      # the bytes do not (field finding 2026-08-16). MEDIA_DIR defaults to
+      # ./loobric_server_media inside the container: throwaway.
+      MEDIA_DIR: /data/media
+    volumes:
+      - media_data:/data
     depends_on:
       - db
+
+volumes:
+  postgres_data:
+  media_data:
 ```
+
+> **The database volume is not enough.** Records live in postgres; media
+> bytes live under `MEDIA_DIR`. Both need persistence, and the media mount
+> must be writable by uid 1000 (the image's `loobric_server` user) —
+> mounting the volume one level above `MEDIA_DIR`, as shown, lets the app
+> create the subdirectory itself. Verify after any deploy change: upload a
+> file, recreate the container, confirm the file still serves.

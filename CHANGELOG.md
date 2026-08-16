@@ -3,6 +3,67 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.14.0] — 2026-08-16
+
+### Added
+- **Account backup: `GET /api/v1/account/export`** — the owner-operated
+  escape hatch (first slice of #46): one zip with every record collection
+  as sectioned JSON (canonical with provenance, client sections, presets),
+  labels, referenced media blobs, and a manifest. Read-gated and
+  user-scoped; missing media is counted honestly, never invented. The Web
+  UI Account tab gains a "Download backup (.zip)" card.
+
+- **Catalogs: named collections of catalog records** (grilled 2026-08-16
+  — the one-giant-pile problem). A Catalog is a sectioned record
+  (`canonical.name` + provenance-tagged `members`) at `/api/v1/catalogs`
+  with create/list/get/rename/replace-members/delete. Membership is
+  **organization, never identity**: a record may sit in any number of
+  catalogs, uncataloged records are allowed (the UI surfaces them as
+  *Uncataloged*), deleting a catalog deletes no records, and the
+  account-wide natural key is untouched by grouping. **Importers
+  auto-catalog each run** — records land in a catalog named from the
+  source (single manufacturer, else the filename), idempotently. The Web
+  UI Catalog tab groups records by catalog with new/rename/delete, and
+  each record's page gets a catalog-membership checklist. Account reset
+  and the export zip cover catalogs.
+
+### Removed
+- **The v1 `ManufacturerCatalog` table and `/api/v1/catalogs` router**
+  (an R6 slice): deep-model substrate (ToolItem ids, manufacturer-role
+  accounts, analytics) unreachable from the v2 facade — and squatting on
+  the name and route the first-class Catalog needed (the same
+  evict-the-squatter move R6 made for "preset"). Migration 0008 drops the
+  table; v1 rows are pre-facade data, deliberately not migrated.
+
+### Changed
+- **DEPLOYMENT.md: media persistence is now part of the sample compose**
+  (`MEDIA_DIR` on a named volume + a warning): the database volume alone
+  does not persist media — a redeploy without a media volume silently
+  discards every blob while the canonical references survive (field
+  finding 2026-08-16, the sandbox 0.13.0 redeploy). The sample also now
+  declares its volumes block, which the old one referenced but omitted.
+- **Web UI: `/ui/` lands on a dashboard** ("Home"), not the machines
+  list: an attention card first (pending binding proposals, machines
+  whose active setup is NOT READY), then one count card per area —
+  machines, tools, tool sets, catalog, labels — and a one-paragraph map
+  of how the pieces fit. Navigation starts from the shape of the shop
+  instead of an arbitrary page.
+- **Web UI: every list is now a table**, consistent with the presets
+  table, with browse-level row actions where a user plausibly scans the
+  list to act (majors stay on the detail pages): **Tools** (name, type,
+  Ø, use, labels, mounted + rename/retire/delete), **Machines**
+  (controller, tool count, setup readiness, pending count + delete),
+  **Tool Sets** (member count, active setup + delete), **Catalog**
+  (manufacturer, product code, Ø, instances-made + create-tool/delete),
+  **set members** (T# with provenance, tool, state + remove), and the
+  Labels tab's blank/on-tools lists (print, delete, public/owner views).
+- **Web UI: all label printing lives on the Labels tab**, in two
+  sections: "Print blank labels" (unchanged) and "Print spec labels" —
+  pick the type (spec label with specs in ink, or a plain QR + code
+  inventory reprint of each tool's newest label), template and stock, and
+  multi-select tools with select-all/deselect-all. The spec bar and
+  checkboxes leave the Tools tab.
+
 ## [0.13.0] — 2026-08-16
 
 ### Added

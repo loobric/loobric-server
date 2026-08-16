@@ -3,7 +3,7 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
-## [Unreleased]
+## [0.13.0] — 2026-08-16
 
 ### Added
 - **Cutting data presets** (`docs/PRESETS.md`; grilled & ratified
@@ -40,6 +40,13 @@ All notable changes to **loobric-server** are recorded here. This project adhere
 - **Web UI: URL values render as hyperlinks** (#51): a canonical leaf or
   client-data value that is a whole http(s) URL (e.g. a catalog record's
   `source_url`) is now a clickable link opening in a new tab.
+
+### Fixed
+- **Web UI unusable with `AUTH_ENABLED=false`**: the audit-logs and
+  changes routers were the last two user-facing endpoints on an auth
+  dependency that honors solo mode but not disabled auth; their 401 made
+  the SPA show the login screen on an auth-disabled dev box. Both now
+  honor all three auth modes.
 
 ## [0.12.0] — 2026-08-15
 

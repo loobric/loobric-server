@@ -95,6 +95,10 @@
   table { width:100%; border-collapse:collapse; font-size:.9rem; }
   td, th { text-align:left; padding:.35rem .4rem; border-top:1px solid var(--line); }
   th { color:var(--dim); font-weight:500; border-top:none; }
+  .ptable td, .ptable th { padding:.28rem .3rem; white-space:nowrap; font-size:.85rem; }
+  .ptable td.plabel { max-width:8rem; overflow:hidden; text-overflow:ellipsis; }
+  .ptable .pill, .ptable .prov { max-width:6rem; overflow:hidden; text-overflow:ellipsis;
+                                 display:inline-block; vertical-align:bottom; }
   #login { position:fixed; inset:0; background:var(--bg); display:none;
            align-items:center; justify-content:center; z-index:10; }
   #login form { background:var(--card); border:1px solid var(--line); border-radius:14px;
@@ -828,6 +832,7 @@ function renderToolDetail(){
         <span class="rowact">${retired?'<span class="pill unbound">retired</span>':""}${idLink(id)}</span></div>
       <div class="muted">${shape?esc(shape):"<i>type unknown</i>"}${dia!=null?" &middot; &#x2300;"+dia:""}${hours!=null?" &middot; "+hours+" h total use":""}</div>
       ${mediaSection(t,"tool-instance-records")}
+      ${presetsSection(t,"tool-instance-records")}
       <div class="section-h">Labels</div>
       ${labelChips(t)}
       <div class="section-h">Bindings</div>
@@ -1298,6 +1303,191 @@ function clientSections(rec){
     <div class="explain">What each client recorded about this item in its own section
     &mdash; source details, caveats, prices &mdash; kept verbatim, outside the canonical spec.</div>` + secs;
 }
+// ---- Cutting data presets (docs/PRESETS.md) --------------------------------
+// A preset is a recommendation WITH A SOURCE, never a fact about the tool.
+// canonical.presets is a derived union the server materializes from
+// contributions; this section renders it (an instance also shows its linked
+// catalog's entries, scope-marked) and offers the contribution form.
+const PRESET_OP_TYPES = ["profiling","slotting","pocketing","adaptive","facing",
+                         "drilling","boring","threading","engraving","chamfering"];
+let _presetFormOpen = null;   // record id whose form is open
+let _presetEdit = null;       // the entry being edited (null = adding)
+function _presetCell(f){
+  if(!f) return `<span class="muted">&mdash;</span>`;
+  return `${esc(f.value)}${f.unit!=null?` <span class="muted">${esc(f.unit)}</span>`:""}`;
+}
+function _presetEntries(rec, resource){
+  const ownScope = resource==="tool-catalog-records" ? "catalog" : "instance";
+  let entries=(((rec.canonical||{}).presets||{}).value||[])
+    .map(e=>({...e, scope: ownScope}));
+  if(resource==="tool-instance-records"){
+    const cid=cf(rec,"catalog_type_id");
+    if(cid){
+      const c=state.catalogs.find(x=>rid(x)===cid);
+      entries=entries.concat(((((c||{}).canonical||{}).presets||{}).value||[])
+        .map(e=>({...e, scope:"catalog", catalog_id:cid})));
+    }
+  }
+  return entries;
+}
+function presetsSection(rec, resource){
+  const recId=rid(rec);
+  const ownScope = resource==="tool-catalog-records" ? "catalog" : "instance";
+  const entries=_presetEntries(rec, resource);
+  const anyMachine=entries.some(e=>e.machine_id);
+  const body = entries.map(e=>{
+    const own = e.scope===ownScope;
+    const originCell = `<span class="pill info" title="${esc(e.origin)}">${esc(e.origin)}</span>`+
+      (own ? "" : ` <a class="link-ish" title="lives on the linked catalog record &mdash; edit it there"
+         onclick="openCatalog('${esc(e.catalog_id)}')">&#x2934;</a>`);
+    const acts = own
+      ? `<button class="mini link" title="Edit"
+           onclick="openPresetForm('${resource}','${recId}','${esc(e.id)}')">&#x270E;</button>
+         <button class="mini link" title="Remove"
+           onclick="deletePreset('${resource}','${recId}','${esc(e.id)}')">&#x2715;</button>`
+      : `<a class="link-ish muted" style="font-size:.78rem" title="edit on the linked catalog record"
+           onclick="openCatalog('${esc(e.catalog_id)}')">catalog</a>`;
+    const src=String(e.source||"unknown");
+    const srcShort=src.includes(":")?src.split(":").slice(1).join(":"):src;
+    return `<tr>
+      <td>${originCell}
+        <div class="muted" style="font-size:.72rem" title="${esc(src)}">${esc(srcShort)}</div></td>
+      <td class="plabel" title="${esc(e.label)}"><b>${esc(e.label)}</b></td>
+      <td class="plabel" title="${esc((e.material||{}).name||"?")}">${esc((e.material||{}).name||"?")}</td>
+      <td>${e.op_type?esc(e.op_type):`<span class="muted">&mdash;</span>`}</td>
+      <td style="text-align:right">${_presetCell(e.vc)}</td>
+      <td style="text-align:right">${_presetCell(e.fz)}</td>
+      <td style="text-align:right">${_presetCell(e.ratio)}</td>
+      ${anyMachine?`<td>${e.machine_id?esc(state.machineNames[e.machine_id]||"machine"):`<span class="muted">&mdash;</span>`}</td>`:""}
+      <td style="text-align:right">${acts}</td>
+    </tr>`;
+  }).join("");
+  const table = entries.length ? `
+    <div style="overflow-x:auto">
+    <table class="ptable">
+      <thead><tr>
+        <th title="the recommender; the fine print is who transcribed it">Origin</th>
+        <th>Label</th><th>Material</th><th>Op</th>
+        <th style="text-align:right" title="surface speed">Vc</th>
+        <th style="text-align:right" title="chipload per tooth">Fz</th>
+        <th style="text-align:right" title="vertical-feed ratio">Ratio</th>
+        ${anyMachine?"<th>Machine</th>":""}
+        <th></th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`
+    : `<div class="muted" style="padding:.45rem 0">No cutting data presets &mdash; recommendations live here with their source.</div>`;
+  const editing = _presetEdit !== null;
+  const form = _presetFormOpen===recId ? `
+    <div style="margin-top:.6rem;display:grid;grid-template-columns:1fr 1fr;gap:.4rem">
+      <span>
+        <label class="cclabel" for="pforigin">Origin &mdash; the recommender</label>
+        <input class="ccinput" id="pforigin" placeholder="manufacturer / user / …"
+               value="${editing?esc(_presetEdit.origin):""}">
+      </span>
+      <span>
+        <label class="cclabel" for="pflabel">Label</label>
+        <input class="ccinput" id="pflabel" placeholder="e.g. 6061 profiling"
+               value="${editing?esc(_presetEdit.label):""}">
+      </span>
+      <span>
+        <label class="cclabel" for="pfmaterial">Material (verbatim)</label>
+        <input class="ccinput" id="pfmaterial" placeholder="e.g. 6061-T6"
+               value="${editing?esc((_presetEdit.material||{}).name||""):""}">
+      </span>
+      <span>
+        <label class="cclabel" for="pfoptype">Op type</label>
+        <select class="picker" id="pfoptype" style="width:100%">
+          <option value="">(none)</option>
+          ${PRESET_OP_TYPES.map(o=>`<option value="${o}" ${editing&&_presetEdit.op_type===o?"selected":""}>${o}</option>`).join("")}
+        </select>
+      </span>
+      <span>
+        <label class="cclabel" for="pfvc">Vc &mdash; surface speed</label>
+        <span style="display:flex;gap:.3rem">
+          <input class="ccinput" id="pfvc" placeholder="number" style="flex:2"
+                 value="${editing&&_presetEdit.vc?esc(_presetEdit.vc.value):""}">
+          <input class="ccinput" id="pfvcu" placeholder="m/min, sfm" style="flex:1"
+                 value="${editing&&_presetEdit.vc&&_presetEdit.vc.unit?esc(_presetEdit.vc.unit):""}">
+        </span>
+      </span>
+      <span>
+        <label class="cclabel" for="pffz">Fz &mdash; chipload / tooth</label>
+        <span style="display:flex;gap:.3rem">
+          <input class="ccinput" id="pffz" placeholder="number" style="flex:2"
+                 value="${editing&&_presetEdit.fz?esc(_presetEdit.fz.value):""}">
+          <input class="ccinput" id="pffzu" placeholder="mm, in" style="flex:1"
+                 value="${editing&&_presetEdit.fz&&_presetEdit.fz.unit?esc(_presetEdit.fz.unit):""}">
+        </span>
+      </span>
+      <span>
+        <label class="cclabel" for="pfratio">Vertical-feed ratio</label>
+        <input class="ccinput" id="pfratio" placeholder="number"
+               value="${editing&&_presetEdit.ratio?esc(_presetEdit.ratio.value):""}">
+      </span>
+      <span style="display:flex;align-items:flex-end;justify-content:flex-end;gap:.4rem">
+        <button class="mini reject" onclick="closePresetForm()">Cancel</button>
+        <button class="mini confirm" onclick="submitPreset('${resource}','${recId}')">
+          ${editing?"Save changes":"Add preset"}</button>
+      </span>
+    </div>
+    <div class="muted" style="font-size:.78rem;margin-top:.3rem">Engineering values only &mdash;
+      raw feed/RPM are never stored. At least one of Vc / Fz / ratio.
+      ${editing?"Changing origin or label renames the entry (the old one is replaced).":""}</div>`
+    : `<div style="margin-top:.4rem"><button class="mini create"
+         onclick="openPresetForm('${resource}','${recId}')">Add preset&hellip;</button></div>`;
+  return `<div class="section-h">Cutting data presets</div>${table}${form}`;
+}
+function openPresetForm(resource, recId, entryId){
+  _presetFormOpen=recId;
+  _presetEdit=null;
+  if(entryId){
+    const rec = resource==="tool-catalog-records"
+      ? state.catalogs.find(x=>rid(x)===recId)
+      : state.tools.find(x=>rid(x)===recId);
+    _presetEdit=(rec?_presetEntries(rec,resource):[]).find(e=>e.id===entryId)||null;
+  }
+  render();
+  setTimeout(()=>{ const i=$("#pforigin"); if(i) i.focus(); },30);
+}
+function closePresetForm(){ _presetFormOpen=null; _presetEdit=null; render(); }
+async function submitPreset(resource, recId){
+  const v=id=>($("#"+id).value||"").trim();
+  const body={ origin:v("pforigin"), label:v("pflabel"),
+               material:{name:v("pfmaterial")}, actor:"human@web" };
+  if(v("pfoptype")) body.op_type=v("pfoptype");
+  const num=(val,unit)=>{ const o={value:parseFloat(val)}; if(unit) o.unit=unit; return o; };
+  if(v("pfvc")) body.vc=num(v("pfvc"), v("pfvcu"));
+  if(v("pffz")) body.fz=num(v("pffz"), v("pffzu"));
+  if(v("pfratio")) body.ratio={value:parseFloat(v("pfratio"))};
+  const edit=_presetEdit;
+  if(edit){
+    // Carry what the form doesn't surface, so an edit never drops it.
+    const mat=(edit.material||{});
+    if(mat.uuid && body.material.name===mat.name) body.material.uuid=mat.uuid;
+    if(edit.extras) body.extras=edit.extras;
+    if(edit.machine_id) body.machine_id=edit.machine_id;
+  }
+  try{
+    await api("POST", `/${resource}/${recId}/presets`, body);
+    // A rename doesn't match replace-own — drop the old (origin, label) entry.
+    if(edit && (edit.origin!==body.origin || edit.label!==body.label)){
+      await api("DELETE", `/${resource}/${recId}/presets/${edit.id}`);
+    }
+    _presetFormOpen=null; _presetEdit=null;
+    toast(edit?"Preset updated.":"Preset added.");
+    await refresh();
+  }catch(e){ toast(e.message); }
+}
+async function deletePreset(resource, recId, entryId){
+  if(!await confirmDialog("Remove this preset contribution?")) return;
+  try{
+    await api("DELETE", `/${resource}/${recId}/presets/${entryId}`);
+    toast("Preset removed.");
+    await refresh();
+  }catch(e){ toast(e.message); }
+}
+
 function openCatalog(id){ state.tab="catalog"; state.catalogSel=id; render(); }
 function backToCatalog(){ state.catalogSel=null; render(); }
 
@@ -1388,6 +1578,7 @@ function renderCatalogDetail(){
       <div class="section-h">Identity</div>${idRows}
       <div class="section-h">Geometry</div>${geomRows}
       ${mediaSection(c,"tool-catalog-records")}
+      ${presetsSection(c,"tool-catalog-records")}
       ${clientSections(c)}
     </div>`;
 }

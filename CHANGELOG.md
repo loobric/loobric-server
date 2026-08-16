@@ -6,6 +6,27 @@ All notable changes to **loobric-server** are recorded here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Cutting data presets** (`docs/PRESETS.md`; grilled & ratified
+  2026-08-16) — F&S as *recommendations with a source, never facts about
+  the tool*. Canonical `presets` on catalog and instance records is a
+  **derived, normalized union** of source-preserved contributions
+  (`derived:preset-union`; direct assert/observe is a 400): the server
+  never reconciles — FreeCAD's conservative chipload and the
+  manufacturer's aggressive chart both stay, origin-tagged, and identical
+  values from two origins are corroboration, not duplicates. Normal form
+  `preset_schema: 1` = G5 engineering values (Vc, Fz, vertical-feed
+  ratio, verbatim material, ratified `op_type`) + a verbatim extras bag;
+  raw feed/RPM are never persisted. Contributions enter through the new
+  audited door `POST /tool-{catalog,instance}-records/{id}/presets`
+  (assert scope; replace-own on `(origin, label)`; removal rides the
+  delete door), with clients promoting their own translations — the sync
+  lane stays pure passthrough. Instance preset listings union the linked
+  catalog type's entries at read time, scope-marked
+  (`GET …/{id}/presets` with origin/material/op_type/machine filters).
+  Web UI record detail gains the preset list + a manual entry form.
+  Migration 0007 adds the contribution table. "Cutting data preset" and
+  the op_type taxonomy join the glossary; design details in
+  `docs/TOOL_SCHEMA.md` §7.9.
 - **Angle-aware spec labels for pointed tools** (#50): the merged view now
   carries `geometry.included_angle` and `geometry.tip_diameter`. A tool
   spec'd by angle rather than diameter (engraver, chamfer — cutting

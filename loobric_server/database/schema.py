@@ -386,6 +386,37 @@ class UsageLedger(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     source: Mapped[str] = mapped_column(String(255), nullable=False)
 
 
+class PresetContribution(Base, TimestampMixin, VersionMixin,
+                         UserAttributionMixin):
+    """One cutting data preset contribution (docs/PRESETS.md): a source's
+    recommendation for a record, normalized to preset_schema 1. Internal —
+    users meet the noun ("cutting data preset"), never the table name; the
+    record's canonical `presets` union is MATERIALIZED from these rows
+    (derived:preset-union), like usage.hours from the usage ledger.
+
+    Identity is (record, origin, label): a same-origin re-contribution
+    replaces its row (replace-own). `data` holds the normalized fields
+    {material, vc, fz, ratio, extras}; origin/label/op_type/machine_id are
+    real columns because listings filter on them.
+    """
+    __tablename__ = "preset_contributions"
+    __table_args__ = (
+        Index("ix_preset_contrib_record",
+              "user_id", "record_kind", "record_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    record_kind: Mapped[str] = mapped_column(String(16), nullable=False)  # "catalog" | "instance"
+    record_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    origin: Mapped[str] = mapped_column(String(120), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    op_type: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    machine_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    preset_schema: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    source: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class Label(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     """A physical label: a QR/short-code sticker pointing at one record.
 

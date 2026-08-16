@@ -522,6 +522,47 @@ reflects true cross-machine wear — is a possible later, careful feature.
 > of orphaned hours, starting balances for pre-Loobric tools, and counter
 > writeback.
 
+### 7.9 Cutting data presets (F&S)
+
+A **cutting data preset** ("preset") is a feeds-and-speeds *recommendation
+with a source, never a fact about the tool* (grilled 2026-08-16; full design
+in `docs/PRESETS.md`). Canonical `presets` on a ToolCatalogRecord or
+ToolInstanceRecord is a **derived, normalized union** of source-preserved
+contributions, materialized with source `derived:preset-union`:
+
+- **No reconciliation, ever.** FreeCAD's conservative chipload and a
+  manufacturer's aggressive chart are both correct in their contexts; both
+  live in the union, and consumers filter/rank by origin, scope, and
+  machine. Identical values from two origins are corroboration, kept as two
+  entries. (This deliberately supersedes the early "tool record wins over
+  catalog" idea — there is no truth to win.)
+- **Normal form** (`preset_schema: 1`): the G5 engineering values — Vc, Fz,
+  vertical-feed ratio, material `{uuid?, name}` verbatim, ratified
+  `op_type` — plus a verbatim, non-comparable `extras` bag. Raw feed/RPM are
+  never persisted. Floor: material + at least one engineering value.
+- **Identity** is `(origin, label)`. `origin` is the *recommender*
+  (manufacturer, freecad, user, an agent); the provenance source records the
+  *transcriber* (`asserted:<actor>`) — the manufacturer-QA-door split. A
+  same-origin re-contribution replaces its predecessor (replace-own);
+  removal rides the delete door (agent preset keys don't hold it).
+- **Intake**: the audited contribution door
+  (`POST /tool-{catalog,instance}-records/{id}/presets`, assert scope).
+  Clients promote their **own** translations through it during sync — the
+  server never parses client sections (the `.fctl` number-promotion
+  pattern); importers and agents use the same door. The sync lane itself
+  remains pure passthrough. Asserting/observing `presets` directly is a 400.
+- **Reads**: the record's own union is inline (`canonical.presets`); an
+  instance's *full* union — own entries plus its linked catalog type's,
+  each marked `scope: instance|catalog` — composes at read time at
+  `GET /tool-instance-records/{id}/presets` (filters: origin, material,
+  op_type, machine_id). Composing at read time means catalog changes never
+  go stale on instances.
+
+Deferred (each its own future design pass): the materials vocabulary
+(entries store material verbatim until then), community library
+publishing/sharing, F&S *calculation* (the CAM resolves; Loobric stores),
+and `observed:` capture of what-actually-worked from job logs.
+
 ---
 
 ## 8. Invariants & reconciliation

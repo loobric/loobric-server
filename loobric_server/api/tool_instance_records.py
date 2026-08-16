@@ -21,7 +21,7 @@ from datetime import datetime, UTC
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from loobric_server.api import _media
@@ -234,6 +234,13 @@ def assert_canonical(record_id: str, req: AssertRequest,
             status_code=400,
             detail="usage is derived from the usage ledger; no door writes "
                    "it directly")
+    if req.path == "presets" or req.path.startswith("presets."):
+        # docs/PRESETS.md: the union is derived from contributions; the
+        # contribution door (POST …/presets) is the only way in.
+        raise HTTPException(
+            status_code=400,
+            detail="presets is a derived union; contribute through "
+                   "POST /tool-instance-records/{id}/presets instead")
     if req.path == "status" and req.value is not None \
             and req.value not in STATUS_VALUES:
         raise HTTPException(
@@ -278,6 +285,11 @@ def delete_instance(record_id: str, db: Session = Depends(get_db),
         create_audit_log(session=db, user_id=user.id, operation="UNBIND",
                          entity_type="tool_table_entry_record", entity_id=entry.id,
                          changes={"reason": "bound instance deleted"})
+    from loobric_server.database.schema import PresetContribution
+    db.query(PresetContribution).filter(
+        PresetContribution.user_id == user.id,
+        PresetContribution.record_kind == "instance",
+        PresetContribution.record_id == record_id).delete()
     # Labels on the deleted record are BURNED, not freed (founder decision
     # 2026-08-04): delete is for records that should never have existed, and
     # a resurrected code on a different tool would make the old sticker lie.
@@ -323,6 +335,91 @@ def get_usage(record_id: str, db: Session = Depends(get_db),
             for c in rows],
         "by_machine": {m: round(v, 6) for m, v in by_machine.items()},
     }
+
+
+class PresetContributeRequest(BaseModel):
+    """One cutting data preset contribution (docs/PRESETS.md): the G5
+    engineering values plus a verbatim extras bag. `origin` is the
+    recommender; `actor` is the transcriber the server stamps."""
+    model_config = ConfigDict(extra="forbid")
+
+    origin: str
+    label: str
+    material: dict
+    op_type: Optional[str] = None
+    vc: Optional[dict] = None
+    fz: Optional[dict] = None
+    ratio: Optional[dict] = None
+    extras: Optional[dict] = None
+    machine_id: Optional[str] = None
+    actor: str = "human@cli"
+
+    def payload(self) -> dict:
+        data = self.model_dump()
+        data.pop("actor")
+        return {k: v for k, v in data.items() if v is not None}
+
+
+@router.post("/{record_id}/presets")
+def contribute_preset(record_id: str, req: PresetContributeRequest,
+                      db: Session = Depends(get_db),
+                      user: User = Depends(door("assert"))):
+    """Contribute one cutting data preset through the audited door
+    (docs/PRESETS.md). Replace-own: a same-(origin, label) re-contribution
+    supersedes its predecessor. The record's canonical `presets` union is
+    rematerialized (derived:preset-union) — no door writes it directly."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        presets_mod.contribute(db, user, presets_mod.KIND_INSTANCE, row.id,
+                               req.payload(), actor=req.actor.strip())
+    except presets_mod.PresetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    presets_mod.materialize(db, user, row, presets_mod.KIND_INSTANCE)
+    db.commit()
+    return _response(row)
+
+
+@router.get("/{record_id}/presets")
+def list_presets(record_id: str, origin: Optional[str] = None,
+                 material: Optional[str] = None,
+                 op_type: Optional[str] = None,
+                 machine_id: Optional[str] = None,
+                 db: Session = Depends(get_db),
+                 user: User = Depends(door("read"))):
+    """The instance's FULL preset union: its own entries plus its linked
+    catalog type's, each marked with `scope` — composed at read time so
+    catalog changes never go stale here. Filters are exact (origin,
+    op_type, machine_id) or case-insensitive verbatim-name (material)."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    entries = presets_mod.union_for_instance(db, user, row)
+    return {"presets": presets_mod.filter_entries(
+        entries, origin=origin, material=material, op_type=op_type,
+        machine_id=machine_id)}
+
+
+@router.delete("/{record_id}/presets/{entry_id}")
+def delete_preset(record_id: str, entry_id: str,
+                  db: Session = Depends(get_db),
+                  user: User = Depends(door("delete"))):
+    """Remove one preset contribution — a deliberate act on the delete door
+    (agent preset keys don't hold it; replace-own is the agent's only
+    revision path)."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if not presets_mod.remove(db, user, presets_mod.KIND_INSTANCE, row.id,
+                              entry_id):
+        raise HTTPException(status_code=404, detail="not found")
+    presets_mod.materialize(db, user, row, presets_mod.KIND_INSTANCE)
+    db.commit()
+    return _response(row)
 
 
 @router.post("/{record_id}/label")

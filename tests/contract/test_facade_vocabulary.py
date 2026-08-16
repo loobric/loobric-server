@@ -45,6 +45,9 @@ RETIRED_PATH_FRAGMENTS = ("/adopt", "/coverage", "/reconcile", "/mirror")
 #   adopt -> bind (a bind may mint) · install/installed -> bound/unbound
 #   coverage -> (removed) · reconcile -> (removed; surfaced via Inbox)
 #   needs attention -> Inbox · mirror -> link/linked · slot -> entry/ToolTableEntry
+# `slotting` is EXEMPT from the slot stem: it is the ratified preset op_type
+# (PRESETS.md, glossary 2026-08-16) — the milling operation, not the retired
+# tool-table "slot".
 RETIRED_VOCABULARY = (
     r"\badopt[a-z]*",
     r"\binstall[a-z]*",
@@ -52,7 +55,7 @@ RETIRED_VOCABULARY = (
     r"\breconcil[a-z]*",
     r"needs[ -]attention",
     r"\bmirror[a-z]*",
-    r"\bslot[a-z]*",
+    r"\bslot(?!ting\b)[a-z]*",
 )
 
 # The facade resources that MUST be published (a positive control so the

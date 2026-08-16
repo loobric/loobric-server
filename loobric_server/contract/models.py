@@ -280,6 +280,75 @@ def _validate_media(media: Optional[Field]) -> None:
             MediaRef.model_validate(entry)
 
 
+# Cutting data presets (docs/PRESETS.md, grilled 2026-08-16): canonical
+# `presets` is a DERIVED union of source-preserved contributions — a
+# recommendation with a source, never a fact about the tool. The server never
+# reconciles; the list is materialized with source `derived:preset-union` and
+# no door writes it directly.
+
+OP_TYPES = {
+    "profiling", "slotting", "pocketing", "adaptive", "facing",
+    "drilling", "boring", "threading", "engraving", "chamfering",
+}
+
+PRESET_SCHEMA = 1
+
+
+class PresetMaterial(BaseModel):
+    """Material as the source stated it — verbatim, normalization deferred
+    (the materials vocabulary is its own future ratification)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    uuid: Optional[str] = None
+
+
+class PresetEntry(BaseModel):
+    """One cutting data preset in the derived union: G5 engineering values
+    (raw feed/RPM never persisted) plus a verbatim, non-comparable extras
+    bag. `origin` is the RECOMMENDER (manufacturer, freecad, user, an
+    agent); the provenance `source` records the transcriber — the same
+    split the manufacturer-QA door uses. Identity is (origin, label)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str                               # contribution row id
+    origin: str                           # recommender: "manufacturer", "freecad", …
+    label: str                            # per-origin name ("Aggressive", "6061 profiling")
+    material: PresetMaterial
+    op_type: Optional[str] = None         # ratified OP_TYPES member, or absent
+    vc: Optional[dict] = None             # surface speed {value, unit}
+    fz: Optional[dict] = None             # chipload {value, unit}
+    ratio: Optional[dict] = None          # vertical-feed ratio {value}
+    extras: Optional[dict] = None         # verbatim, non-comparable
+    machine_id: Optional[str] = None      # optional machine qualifier
+    preset_schema: int = PRESET_SCHEMA
+    source: str = "unknown"               # asserted:<transcriber>
+    updated_at: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _floor(self) -> "PresetEntry":
+        if self.op_type is not None and self.op_type not in OP_TYPES:
+            raise ValueError(
+                "op_type must be one of %s (or absent) — the vocabulary is "
+                "ratified, not accreted" % sorted(OP_TYPES))
+        if self.vc is None and self.fz is None and self.ratio is None:
+            raise ValueError(
+                "a preset needs at least one engineering value (vc, fz, or "
+                "ratio) — an entry with none has no comparable surface")
+        return self
+
+
+def _validate_presets(presets: Optional[Field]) -> None:
+    """A `presets` Field's value is a list of PresetEntry dicts (or null)."""
+    if presets is not None and presets.value is not None:
+        if not isinstance(presets.value, list):
+            raise ValueError("presets value must be a list")
+        for entry in presets.value:
+            PresetEntry.model_validate(entry)
+
+
 class InstanceCanonical(BaseModel):
     """A physical tool's agreed truth: measured geometry, optional catalog
     link (unknown until asserted), install status. May be an assembly (a built
@@ -296,11 +365,13 @@ class InstanceCanonical(BaseModel):
     media: Optional[Field] = None         # list[MediaRef]; bytes in the blob store
     geometry: Geometry = Geometry()
     usage: Optional["InstanceUsage"] = None  # derived:usage-ledger only (§7.8)
+    presets: Optional[Field] = None       # list[PresetEntry]; derived:preset-union only
 
     @model_validator(mode="after")
     def _composition(self) -> "InstanceCanonical":
         _validate_composition(self.item_type, self.components)
         _validate_media(self.media)
+        _validate_presets(self.presets)
         return self
 
 
@@ -317,11 +388,13 @@ class CatalogCanonical(BaseModel):
     components: Optional[Field] = None
     media: Optional[Field] = None         # list[MediaRef]; bytes in the blob store
     geometry: Geometry = Geometry()
+    presets: Optional[Field] = None       # list[PresetEntry]; derived:preset-union only
 
     @model_validator(mode="after")
     def _composition(self) -> "CatalogCanonical":
         _validate_composition(self.item_type, self.components)
         _validate_media(self.media)
+        _validate_presets(self.presets)
         return self
 
 

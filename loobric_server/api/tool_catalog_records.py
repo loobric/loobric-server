@@ -29,6 +29,7 @@ from loobric_server.api import _media
 from loobric_server.api.auth import get_db, get_authenticated_user
 from loobric_server.auth.doors import door
 from loobric_server.api.tool_instance_records import _response as _instance_response
+from loobric_server.api.tool_instance_records import PresetContributeRequest
 from loobric_server.database.schema import (
     User, ToolCatalogRecord as Row, ToolInstanceRecord as InstanceRow,
 )
@@ -429,6 +430,11 @@ def delete_catalog_record(record_id: str, db: Session = Depends(get_db),
                          changes={"path": "catalog_type_id",
                                   "reason": "catalog record deleted"})
         unlinked += 1
+    from loobric_server.database.schema import PresetContribution
+    db.query(PresetContribution).filter(
+        PresetContribution.user_id == user.id,
+        PresetContribution.record_kind == "catalog",
+        PresetContribution.record_id == record_id).delete()
     db.delete(row)
     create_audit_log(session=db, user_id=user.id, operation="DELETE",
                      entity_type="tool_catalog_record", entity_id=record_id)
@@ -481,6 +487,13 @@ def assert_canonical(record_id: str, req: AssertRequest,
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
+    if req.path == "presets" or req.path.startswith("presets."):
+        # docs/PRESETS.md: the union is derived from contributions; the
+        # contribution door (POST …/presets) is the only way in.
+        raise HTTPException(
+            status_code=400,
+            detail="presets is a derived union; contribute through "
+                   "POST /tool-catalog-records/{id}/presets instead")
     field = {"value": req.value, "source": Provenance.asserted(req.actor)}
     if req.unit is not None:
         field["unit"] = req.unit
@@ -498,6 +511,66 @@ def assert_canonical(record_id: str, req: AssertRequest,
     create_audit_log(session=db, user_id=user.id, operation="ASSERT",
                      entity_type="tool_catalog_record", entity_id=row.id,
                      changes={"path": req.path, "source": field["source"]})
+    db.commit()
+    return _response(row)
+
+
+@router.post("/{record_id}/presets")
+def contribute_preset(record_id: str, req: PresetContributeRequest,
+                      db: Session = Depends(get_db),
+                      user: User = Depends(door("assert"))):
+    """Contribute one cutting data preset to this catalog TYPE — typically a
+    manufacturer's recommendation (origin "manufacturer", transcribed by a
+    human or agent) or an imported library's F&S. Replace-own on
+    (origin, label); the union rematerializes as derived:preset-union."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    try:
+        presets_mod.contribute(db, user, presets_mod.KIND_CATALOG, row.id,
+                               req.payload(), actor=req.actor.strip())
+    except presets_mod.PresetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    presets_mod.materialize(db, user, row, presets_mod.KIND_CATALOG)
+    db.commit()
+    return _response(row)
+
+
+@router.get("/{record_id}/presets")
+def list_presets(record_id: str, origin: Optional[str] = None,
+                 material: Optional[str] = None,
+                 op_type: Optional[str] = None,
+                 machine_id: Optional[str] = None,
+                 db: Session = Depends(get_db),
+                 user: User = Depends(door("read"))):
+    """This catalog type's own preset entries (scope "catalog"), filtered."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    entries = presets_mod.record_entries(
+        db, user, presets_mod.KIND_CATALOG, row.id)
+    for entry in entries:
+        entry["scope"] = presets_mod.KIND_CATALOG
+    return {"presets": presets_mod.filter_entries(
+        entries, origin=origin, material=material, op_type=op_type,
+        machine_id=machine_id)}
+
+
+@router.delete("/{record_id}/presets/{entry_id}")
+def delete_preset(record_id: str, entry_id: str,
+                  db: Session = Depends(get_db),
+                  user: User = Depends(door("delete"))):
+    """Remove one preset contribution — the delete door's deliberate act."""
+    from loobric_server import presets as presets_mod
+    row = _owned(db, user, record_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="not found")
+    if not presets_mod.remove(db, user, presets_mod.KIND_CATALOG, row.id,
+                              entry_id):
+        raise HTTPException(status_code=404, detail="not found")
+    presets_mod.materialize(db, user, row, presets_mod.KIND_CATALOG)
     db.commit()
     return _response(row)
 

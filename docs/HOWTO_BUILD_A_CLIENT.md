@@ -144,6 +144,31 @@ POST /api/v1/instance-inbox/{id}/reject
 The golden rule: **sync never prompts, blocks, or guesses.** When two sides
 disagree, you surface it and leave it unsynced — you do not silently overwrite.
 
+### Cutting data presets: you translate, the server stores
+
+If your client's native tool format carries feeds & speeds, promoting them
+is YOUR job — the server never parses your client section
+(`docs/PRESETS.md`). During sync, translate each native preset into the
+normal form and contribute it:
+
+```
+POST /api/v1/tool-instance-records/{id}/presets
+{ "origin": "<your client name>", "label": "<the preset's native name>",
+  "material": {"name": "<verbatim>"}, "op_type": "profiling",
+  "vc": {"value": 250, "unit": "m/min"}, "fz": {"value": 0.05, "unit": "mm"},
+  "extras": {"<anything else the source states, verbatim>": "..."},
+  "actor": "<your client name>" }
+```
+
+Engineering values only — **convert raw feed/RPM to Vc/Fz before
+contributing; they are never stored.** Re-contributing the same
+`(origin, label)` replaces your previous entry, so re-syncs stay
+idempotent. A preset you can't translate (missing flute count, alien op
+type) simply stays in your client section — lossless round-trip is
+unchanged, and honesty beats a guessed value. The `op_type` vocabulary is
+ratified (the 400 names the valid values); put your native op wording in
+`extras`.
+
 ---
 
 ## 4. Explore it live

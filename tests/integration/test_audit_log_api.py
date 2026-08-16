@@ -262,9 +262,32 @@ class TestAuditLogQueryAsAdmin:
 
 class TestAuditLogQueryUnauthenticated:
     """Test audit log queries without authentication."""
-    
+
     def test_unauthenticated_request_fails(self, client, sample_logs):
         """Unauthenticated requests are rejected."""
         response = client.get("/api/v1/audit-logs")
-        
+
         assert response.status_code == 401
+
+
+class TestAuditLogAuthDisabled:
+    """AUTH_ENABLED=false must behave like every other endpoint (test user),
+    not 401: the SPA's refresh() treats any single 401 as signed-out, so a
+    401 here made the whole web UI unusable on an auth-disabled dev box.
+    (This file's local `client` fixture shadows the conftest one, so auth is
+    disabled by patching the settings object directly.)"""
+
+    def test_auth_disabled_returns_logs_not_401(self, client, test_db,
+                                                monkeypatch):
+        monkeypatch.setattr(settings, "auth_enabled", False)
+        response = client.get("/api/v1/audit-logs")
+        assert response.status_code == 200
+        assert "logs" in response.json()
+
+    def test_auth_disabled_changes_feed_not_401(self, client, test_db,
+                                                monkeypatch):
+        monkeypatch.setattr(settings, "auth_enabled", False)
+        response = client.get(
+            "/api/v1/changes/tool_instance_records/since-version",
+            params={"since_version": 0})
+        assert response.status_code == 200

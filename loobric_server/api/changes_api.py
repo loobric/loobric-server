@@ -23,7 +23,7 @@ from loobric_server.database.schema import (
     MachineRecord, ToolInstanceRecord, ToolCatalogRecord,
     ToolTableEntryRecord, ToolSetRecord,
 )
-from loobric_server.api.auth import get_db, require_auth
+from loobric_server.api.auth import get_db, get_authenticated_user
 from loobric_server.change_detection import (
     get_changes_since_version, get_changes_since_timestamp, get_max_version
 )
@@ -69,7 +69,7 @@ async def get_changes_by_version(
     entity_type: str,
     since_version: int = Query(..., ge=0, description="Return entities with version > this value"),
     limit: Optional[int] = Query(100, ge=1, le=1000, description="Maximum number of results"),
-    current_user = Depends(require_auth),
+    current_user = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """Get entities that changed since a specific version.
@@ -155,7 +155,7 @@ async def get_changes_by_timestamp(
     entity_type: str,
     since_timestamp: datetime = Query(..., description="Return entities with updated_at > this value"),
     limit: Optional[int] = Query(100, ge=1, le=1000, description="Maximum number of results"),
-    current_user = Depends(require_auth),
+    current_user = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """Get entities that changed since a specific timestamp.
@@ -238,7 +238,7 @@ async def get_changes_by_timestamp(
 @router.get("/{entity_type}/max-version")
 async def get_entity_max_version(
     entity_type: str,
-    current_user = Depends(require_auth),
+    current_user = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """Get the maximum version number for an entity type.

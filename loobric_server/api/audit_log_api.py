@@ -15,7 +15,12 @@ from typing import Optional
 import structlog
 
 from loobric_server.database.schema import AuditLog, User
-from loobric_server.api.auth import get_db, require_auth
+# get_authenticated_user (not require_auth): it honors ALL THREE auth modes —
+# enabled, solo (LOOBRIC_SOLO=1), and disabled (AUTH_ENABLED=false). The old
+# require_auth dependency 401'd in disabled mode, and the SPA's refresh()
+# treats any single 401 as "signed out", so this one endpoint made the whole
+# web UI unusable on an auth-disabled dev box.
+from loobric_server.api.auth import get_db, get_authenticated_user
 from loobric_server.auth.authorization import log_authorization_decision
 
 logger = structlog.get_logger()
@@ -32,7 +37,7 @@ async def query_audit_logs(
     result: Optional[str] = Query(None, description="Filter by result (success, error)"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of logs to return"),
     offset: int = Query(0, ge=0, description="Number of logs to skip"),
-    current_user: User = Depends(require_auth),
+    current_user: User = Depends(get_authenticated_user),
     db: Session = Depends(get_db)
 ):
     """Query audit logs with role-based filtering.

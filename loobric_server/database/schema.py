@@ -169,26 +169,18 @@ class ToolItem(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
-class ManufacturerCatalog(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
-    """Manufacturer catalog model - collections of catalog tools.
-    
-    Assumptions:
-    - user_id is manufacturer owner (role="manufacturer")
-    - tool_ids is JSON array of ToolItem IDs in this catalog
-    - tags is JSON array for searchability (e.g., ["lathe", "aluminum"])
-    - Same tool can exist in multiple catalogs
-    - is_published: only published catalogs visible to public
-    - catalog_year is optional (e.g., 2024)
-    """
-    __tablename__ = "manufacturer_catalogs"
-    
+class Catalog(Base, TimestampMixin, VersionMixin, UserAttributionMixin):
+    """Sectioned tool-schema entity: a named collection of catalog records
+    (docs/UBIQUITOUS_LANGUAGE.md "Catalog"; grilled 2026-08-16). Membership
+    is organization, never identity: `canonical.members` is a
+    provenance-tagged list of catalog-record ids, a record may sit in any
+    number of catalogs, and deleting a catalog never deletes records.
+    Replaces the v1 `manufacturer_catalogs` deep-model substrate."""
+    __tablename__ = "catalogs"
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    catalog_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    tool_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    tags: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
-    is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    canonical: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    clients: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class ToolAssembly(Base, TimestampMixin, VersionMixin, UserAttributionMixin):

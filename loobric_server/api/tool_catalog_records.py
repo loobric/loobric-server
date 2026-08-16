@@ -289,6 +289,33 @@ async def import_catalog_file(file: UploadFile = File(...),
             except Exception:
                 report["media_failed"] += 1
         db.commit()
+
+    # Auto-catalog per import (grilled 2026-08-16): the run's records — the
+    # freshly created AND the already-existing duplicates — land in one
+    # Catalog named from the source: the single manufacturer when the file
+    # has one, else the filename. Imports stop feeding the pile.
+    from loobric_server.api.catalogs import upsert_import_catalog
+    member_ids = [c["id"] for c in report["created"]]
+    for ident in report["existing"]:
+        mfr = (ident.get("manufacturer") or "").strip().casefold()
+        pc = (ident.get("product_code") or "").strip().casefold()
+        row = db.query(Row).filter(
+            Row.user_id == user.id,
+            Row.manufacturer_norm == mfr,
+            Row.product_code_norm == pc).first()
+        if row is not None:
+            member_ids.append(row.id)
+    manufacturers = {(i.get("manufacturer") or "").strip()
+                     for i in report["created"] + report["existing"]}
+    manufacturers.discard("")
+    catalog_name = manufacturers.pop() if len(manufacturers) == 1 \
+        else _Path(file.filename or "import").stem
+    catalog_id = upsert_import_catalog(
+        db, user, catalog_name, member_ids,
+        actor=(actor or "").strip() or "catalog-import")
+    if catalog_id:
+        db.commit()
+        report["catalog"] = {"id": catalog_id, "name": catalog_name}
     return report
 
 

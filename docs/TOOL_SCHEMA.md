@@ -235,6 +235,15 @@ that have type information.
 `asserted:catalog-import` or `asserted:human` — it is the published/nominal
 spec, never `observed`.
 
+Catalog records group into **Catalogs** (`/api/v1/catalogs`; grilled
+2026-08-16): sectioned records whose canonical carries `name` and `members`
+(a provenance-tagged list of catalog-record ids). Membership is
+**organization, never identity** — many-to-many, uncataloged records
+allowed, deleting a catalog deletes no records, and the account-wide
+natural key is untouched by grouping. Importers auto-create/reuse a
+catalog named from the source (single manufacturer, else filename). The
+v1 `manufacturer_catalogs` deep-model table is retired (migration 0008).
+
 ### 7.2 `ToolInstanceRecord` — a *physical* tool
 The syncable, installable thing. References an optional catalog type. **Binds
 to at most one tool-table entry at a time** (the install-once invariant, §8).

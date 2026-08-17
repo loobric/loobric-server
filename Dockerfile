@@ -17,8 +17,18 @@ RUN pip install --no-cache-dir -e .
 # Copy application code
 COPY . .
 
-# Create non-root user
-RUN useradd -m -u 1000 loobric_server && chown -R loobric_server:loobric_server /app
+# Bake the build commit for /version (see loobric_server/version.py: the env
+# override is the only way an installed build can know its commit).
+ARG LOOBRIC_COMMIT=""
+ENV LOOBRIC_COMMIT=$LOOBRIC_COMMIT
+
+# Create non-root user. /app/data must exist and be owned by the app user
+# BEFORE the USER switch: a fresh named volume mounted there inherits the
+# image directory's ownership, so `docker run -v loobric-data:/app/data`
+# works out of the box instead of handing uid 1000 a root-owned mount.
+RUN useradd -m -u 1000 loobric_server \
+    && mkdir -p /app/data \
+    && chown -R loobric_server:loobric_server /app
 USER loobric_server
 
 # Expose port

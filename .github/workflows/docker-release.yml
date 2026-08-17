@@ -61,6 +61,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            LOOBRIC_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -73,6 +75,8 @@ jobs:
           platforms: linux/amd64
           tags: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
           outputs: type=docker,dest=/tmp/loobric-server-image.tar
+          build-args: |
+            LOOBRIC_COMMIT=${{ github.sha }}
           cache-from: type=gha
 
       - name: Attach tarball to the release

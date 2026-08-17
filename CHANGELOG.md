@@ -3,6 +3,23 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.15.2] — 2026-08-17
+
+### Fixed
+- **Named-volume permissions.** The image now creates `/app/data` owned by
+  the app user before dropping root, so a fresh named volume mounted there
+  (`docker run -v loobric-data:/app/data …`, the README quickstart) inherits
+  writable ownership. Previously Docker created the volume root-owned and
+  the server (uid 1000) died on `unable to open database file`.
+- **Runtime version string.** 0.15.1 bumped only `pyproject.toml`;
+  `loobric_server/version.py` — the actual source of `/api/health` and
+  `/version` — still said 0.15.0. Both now agree.
+
+### Added
+- **Build commit baked into images.** The Docker release workflow passes
+  `LOOBRIC_COMMIT` as a build arg, so `/version` reports the exact commit
+  in published images instead of `unknown`.
+
 ## [0.15.1] — 2026-08-17
 
 ### Added

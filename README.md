@@ -51,7 +51,7 @@ This project was started out of a personal need to synchronize linuxcnc machine 
 
 ### **loobric-linuxcnc** - LinuxCNC controller integration
 
-[loobric-linuxcnc](https://github.com/loobric/loobric-linuxcnc)
+[loobric-linuxcnc](https://github.com/loobric/loobric-clients/tree/master/clients/linuxcnc)
 
 ### **loobric-cli** - Python library and CLI
 

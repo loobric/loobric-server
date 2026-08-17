@@ -3,6 +3,40 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.15.0] — 2026-08-17
+
+### Added
+- **Batch sync doors** (`docs/BATCH_SYNC.md`, grilled 2026-08-17):
+  `POST /tool-instance-records/sync` and `POST /tool-catalog-records/sync`
+  — upsert many records in ONE transaction per batch (cap 200 items,
+  413 above). Items compose the existing doors, never blur them: `data`
+  writes only the client's own section, `asserts` run the assert door's
+  shared code path (every guard included), `presets` run the contribution
+  door's path (floor, replace-own). Per-item outcomes
+  (`created | updated | unchanged | exists | error`) in request order;
+  `?include=records` opt-in; merge-only — deliberately NO snapshot mode
+  (absence from a library file is not evidence of retirement; deletes stay
+  human acts). Scopes compose per lane: a sync-only key gets
+  blocked/skipped counts, never a rejected batch. Instance identity:
+  explicit `id`, else `(client, client_item_id)` with a per-item
+  `ambiguous_item_id` error (the JSON-held item id has no uniqueness
+  constraint). Catalog identity: the natural key carried in each item's
+  asserts; a match is `exists` — no create, no canonical writes, but the
+  client's OWN section still syncs (an importer's preserved raw stays
+  current). Audit: one `SYNC_BATCH` row per batch plus the per-entity
+  rows exactly as before. Measured motivation: a 327-tool Fusion library
+  import was ~2,600 requests ≈ 11 min against SQLite's single writer even
+  with 8 parallel client workers; through the door it is 3 requests ≈ 4 s.
+
+### Changed
+- **Same-value asserts are now no-ops on the single-record assert doors**
+  (instance + catalog; the ratified rule in BATCH_SYNC.md §2.4): an assert
+  whose value, unit AND actor all match the stored leaf changes nothing —
+  no source overwrite, no version bump, no audit row — making re-syncs
+  idempotent end to end. An assert of the same value by a DIFFERENT actor
+  still applies in full: corroboration is a provenance claim and stays
+  recorded. This is the release's one behavior change.
+
 ## [0.14.0] — 2026-08-16
 
 ### Added

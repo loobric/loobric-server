@@ -201,6 +201,7 @@ distinct entities along the catalog → physical → machine axis. Always use th
 | **Version (optimistic locking)** | Integer incremented on every write to an entity. A write with a stale version is a **conflict**. |
 | **Conflict** | A write attempted against a stale version, typically because two systems changed the same entity between syncs. |
 | **Bulk operation** | API endpoints that create/update many entities in one request. The API is "bulk-first" because sync workloads are batch-shaped. |
+| **Batch sync door** | The composite door `POST /tool-{instance,catalog}-records/sync` (docs/BATCH_SYNC.md, grilled 2026-08-17): upserts many records in one transaction, each item composing the sync lane (`data`), the assert lane (`asserts`) and the preset contribution door (`presets`) — the existing doors' code paths and scopes, batched, never blurred. Distinct from "the sync door" (the per-record `PUT …/clients/{client}` section write), which it contains. Merge-only: it never deletes, and there is deliberately no snapshot mode. |
 | **Import / Export** | Moving tool data in/out of Loobric in portable formats (JSON, CSV, XML) — the no-lock-in escape hatch, distinct from live sync. |
 
 ## Roles, Tenancy & Security

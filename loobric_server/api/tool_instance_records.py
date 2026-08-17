@@ -20,10 +20,12 @@ import copy
 from datetime import datetime, UTC
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
+                     UploadFile)
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
+from loobric_server import batch_sync
 from loobric_server.api import _media
 from loobric_server.api.auth import get_db, get_authenticated_user
 from loobric_server.auth.doors import door
@@ -167,6 +169,28 @@ def create_instance(payload: CreateRequest, db: Session = Depends(get_db),
     return _response(row)
 
 
+@router.post("/sync")
+def sync_batch(req: batch_sync.BatchRequest, request: Request,
+               include: Optional[str] = None,
+               db: Session = Depends(get_db),
+               user: User = Depends(door("sync"))):
+    """The batch sync door (docs/BATCH_SYNC.md, grilled 2026-08-17): upsert
+    many records in ONE transaction — items compose the sync lane (`data`),
+    the assert lane (`asserts`, shared code path) and the contribution door
+    (`presets`). Per-item outcomes; merge-only, no snapshot. Items carrying
+    asserts/presets (or needing creation) additionally exercise the assert
+    scope — a sync-only key gets blocked/skipped counts, never a rejected
+    batch. `?include=records` echoes full records per item."""
+    if len(req.items) > batch_sync.MAX_ITEMS:
+        raise HTTPException(
+            status_code=413,
+            detail="batch too large: %d items (cap %d) — chunk the request"
+                   % (len(req.items), batch_sync.MAX_ITEMS))
+    return batch_sync.run_instance_batch(
+        db, user, req, can_assert=batch_sync.holds_assert(request),
+        include_records=include == "records")
+
+
 @router.get("")
 def list_instances(db: Session = Depends(get_db),
                    user: User = Depends(door("read"))):
@@ -222,32 +246,21 @@ def assert_canonical(record_id: str, req: AssertRequest,
                      db: Session = Depends(get_db),
                      user: User = Depends(door("assert"))):
     """Deliberately declare a canonical value (shape, a nominal dimension, the
-    catalog-type link). Rare, audited. Stamps source asserted:<actor>."""
+    catalog-type link). Rare, audited. Stamps source asserted:<actor>.
+
+    Same-value rule (docs/BATCH_SYNC.md §2.4, ratified 2026-08-17): an
+    assert whose value, unit AND actor all match the stored leaf is a no-op
+    — no source overwrite, no version bump, no audit row — so re-syncs are
+    idempotent. A different actor asserting the same value still applies:
+    corroboration is a provenance claim and stays recorded."""
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
-    if req.path == "usage" or req.path.startswith("usage."):
-        # §7.8: the lifetime total is derived from the usage ledger; nobody
-        # ever claims it. (Observe refuses via OBSERVABLE_PATHS; this is the
-        # assert-door half of the same rule.)
-        raise HTTPException(
-            status_code=400,
-            detail="usage is derived from the usage ledger; no door writes "
-                   "it directly")
-    if req.path == "presets" or req.path.startswith("presets."):
-        # docs/PRESETS.md: the union is derived from contributions; the
-        # contribution door (POST …/presets) is the only way in.
-        raise HTTPException(
-            status_code=400,
-            detail="presets is a derived union; contribute through "
-                   "POST /tool-instance-records/{id}/presets instead")
-    if req.path == "status" and req.value is not None \
-            and req.value not in STATUS_VALUES:
-        raise HTTPException(
-            status_code=400,
-            detail="status must be one of %s (or null to clear it) — the "
-                   "vocabulary is ratified, not accreted"
-                   % sorted(STATUS_VALUES))
+    batch_sync.assert_guards(batch_sync.INSTANCE, req.path, req.value,
+                             STATUS_VALUES)
+    if batch_sync.is_same_value_noop(row.canonical, req.path, req.value,
+                                     req.unit, req.actor):
+        return _response(row)
     field = {"value": req.value, "source": Provenance.asserted(req.actor)}
     if req.unit is not None:
         field["unit"] = req.unit

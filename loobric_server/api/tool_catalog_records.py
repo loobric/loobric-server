@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from loobric_server import batch_sync
 from loobric_server.api import _media
 from loobric_server.api.auth import get_db, get_authenticated_user
 from loobric_server.auth.doors import door
@@ -413,6 +414,29 @@ def create_catalog_record(req: CreateRequest, db: Session = Depends(get_db),
     return _response(row)
 
 
+@router.post("/sync")
+def sync_batch(req: batch_sync.BatchRequest, request: Request,
+               include: Optional[str] = None,
+               db: Session = Depends(get_db),
+               user: User = Depends(door("sync"))):
+    """The batch sync door for catalog types (docs/BATCH_SYNC.md, grilled
+    2026-08-17). Identity is the natural key carried in each item's asserts
+    (name/manufacturer/product_code — the identity floor). A natural-key
+    match is `exists`: no create, no canonical writes, but the client's OWN
+    section still syncs, keeping an importer's preserved raw current. No
+    match seeds an atomic create (every assert stamped asserted:<actor>,
+    one CREATE audit row — the seeded-create precedent) plus preset
+    contributions. Per-item outcomes; one transaction per batch."""
+    if len(req.items) > batch_sync.MAX_ITEMS:
+        raise HTTPException(
+            status_code=413,
+            detail="batch too large: %d items (cap %d) — chunk the request"
+                   % (len(req.items), batch_sync.MAX_ITEMS))
+    return batch_sync.run_catalog_batch(
+        db, user, req, can_assert=batch_sync.holds_assert(request),
+        include_records=include == "records")
+
+
 @router.get("")
 def list_catalogs(db: Session = Depends(get_db),
                   user: User = Depends(door("read"))):
@@ -514,13 +538,13 @@ def assert_canonical(record_id: str, req: AssertRequest,
     row = _owned(db, user, record_id)
     if row is None:
         raise HTTPException(status_code=404, detail="not found")
-    if req.path == "presets" or req.path.startswith("presets."):
-        # docs/PRESETS.md: the union is derived from contributions; the
-        # contribution door (POST …/presets) is the only way in.
-        raise HTTPException(
-            status_code=400,
-            detail="presets is a derived union; contribute through "
-                   "POST /tool-catalog-records/{id}/presets instead")
+    batch_sync.assert_guards(batch_sync.CATALOG, req.path, req.value)
+    if batch_sync.is_same_value_noop(row.canonical, req.path, req.value,
+                                     req.unit, req.actor):
+        # Same value, unit AND actor (docs/BATCH_SYNC.md §2.4): idempotent
+        # no-op — no version bump, no audit row. A different actor's same
+        # value still applies (corroboration stays recorded).
+        return _response(row)
     field = {"value": req.value, "source": Provenance.asserted(req.actor)}
     if req.unit is not None:
         field["unit"] = req.unit

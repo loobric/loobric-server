@@ -34,3 +34,13 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local data and history — must never reach a published image
+.git/
+.github/
+.claude/
+*.bak
+loobric_server_media/
+backups/
+.hypothesis/
+.ruff_cache/

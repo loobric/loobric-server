@@ -3,6 +3,24 @@
 All notable changes to **loobric-server** are recorded here. This project adheres to
 [Semantic Versioning](https://semver.org/). Dates are ISO-8601.
 
+## [0.15.1] — 2026-08-17
+
+### Added
+- **Docker images as release assets.** Every release now publishes a
+  multi-arch (amd64 + arm64) container image to GitHub Container Registry
+  (`ghcr.io/loobric/loobric-server`, tagged `<version>`, `<major>.<minor>`,
+  `latest`) and attaches the same image as a `docker save` tarball
+  (`loobric-server-<version>-docker-amd64.tar.gz`) to the GitHub release
+  for offline / air-gapped installs. README gained a "Run with Docker"
+  section: one `loobric-data` volume holds both the SQLite database and
+  the media store (`MEDIA_DIR=/app/data/media`).
+
+### Fixed
+- **`.dockerignore` leak.** The image build excluded `*.db` but not
+  `loobric.db.pre-migration-*.bak` backups, `.git/`, or the local media
+  directory — `COPY . .` would have baked local data into a published
+  image. All are now excluded. No server behavior changes in this release.
+
 ## [0.15.0] — 2026-08-17
 
 ### Added

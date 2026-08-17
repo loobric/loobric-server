@@ -25,6 +25,32 @@ Planned work (standards import, more clients, hosted offering) lives in [ROADMAP
 - [For Users and the curious](docs/QUICK_START.md)
 - [For Developers](docs/DEVELOPMENT.md)
 
+## Run with Docker
+
+Every release publishes a container image (amd64 + arm64) to GitHub Container
+Registry:
+
+```bash
+docker run -d --name loobric-server \
+  -p 8000:8000 \
+  -v loobric-data:/app/data \
+  -e DATABASE_URL=sqlite:////app/data/loobric.db \
+  -e MEDIA_DIR=/app/data/media \
+  ghcr.io/loobric/loobric-server:latest
+```
+
+The single `loobric-data` volume holds both the SQLite database and the media
+store — back it up and you have everything.
+
+For offline or air-gapped shops, each [GitHub release](https://github.com/loobric/loobric-server/releases)
+also attaches the same image as a tarball
+(`loobric-server-<version>-docker-amd64.tar.gz`). Carry it over on removable
+media and load it with:
+
+```bash
+docker load < loobric-server-<version>-docker-amd64.tar.gz
+```
+
 ## How-to guides
 
 Task-oriented walkthroughs for linking a CNC control and a CAM tool set:

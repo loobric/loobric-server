@@ -1,0 +1,87 @@
+# Build and publish the server container on every release.
+#
+# Two artifacts per release:
+#   1. Multi-arch image pushed to GHCR: ghcr.io/loobric/loobric-server
+#      (tags: <version>, <major>.<minor>, latest)
+#   2. An amd64 `docker save` tarball attached to the GitHub release as an
+#      asset, for offline / air-gapped shops: docker load < the .tar.gz.
+#
+# One-time setup after the first run: the GHCR package is created private by
+# default — flip it to Public in the org's Packages settings so anonymous
+# `docker pull` works.
+
+name: Docker image
+
+on:
+  release:
+    types: [published]
+  # Manual runs build and push GHCR tags from the chosen ref (branch runs are
+  # tagged with the branch name); they skip the release-asset upload.
+  workflow_dispatch:
+
+permissions:
+  contents: write   # upload the tarball asset to the release
+  packages: write   # push to ghcr.io
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Release tags are v<semver>; `latest` is added automatically for
+          # semver tags (flavor latest=auto). Branch dispatches fall through
+          # to the ref rule.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=branch
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Rebuild is a cache hit; this just exports the amd64 layers to a file.
+      - name: Export amd64 image tarball
+        if: github.event_name == 'release'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+          outputs: type=docker,dest=/tmp/loobric-server-image.tar
+          cache-from: type=gha
+
+      - name: Attach tarball to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          gzip -9 /tmp/loobric-server-image.tar
+          ASSET="loobric-server-${VERSION}-docker-amd64.tar.gz"
+          mv /tmp/loobric-server-image.tar.gz "$ASSET"
+          gh release upload "${{ github.event.release.tag_name }}" "$ASSET" --clobber
